@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REFLEX_CHAIN_BUILDER v1.3 | 13th Hour</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<style>
+:root{--bg:#0a0a0a;--bg-panel:#0d0d0d;--bg-node:#141414;--bg-node-hover:#1a1a1a;--bg-card:#111111;
+--border:#00ff41;--border-dim:#003311;--text:#00ff41;--text-dim:#006622;--text-bright:#88ff88;--text-fg:#e0e0e0;
+--danger:#ff0044;--warning:#ffaa00;--info:#00aaff;--success:#00ff41;--purple:#aa66ff;--cyan:#00ffff;
+--font-mono:"Courier New","Consolas",monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font-mono);overflow:hidden;height:100vh;width:100vw}
+.topbar{height:40px;background:var(--bg-panel);border-bottom:1px solid var(--border-dim);display:flex;align-items:center;padding:0 16px;gap:16px;font-size:12px;z-index:100;position:relative}
+.topbar .title{font-weight:bold;font-size:13px;letter-spacing:2px;text-shadow:0 0 8px var(--border)}
+.topbar .status{margin-left:auto;display:flex;align-items:center;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);box-shadow:0 0 4px var(--text-dim);transition:all 0.3s}
+.status-dot.active{background:var(--success);box-shadow:0 0 8px var(--success)}
+.status-dot.error{background:var(--danger);box-shadow:0 0 8px var(--danger)}
+.btn{background:transparent;border:1px solid var(--border-dim);color:var(--text);padding:4px 12px;font-family:var(--font-mono);font-size:11px;cursor:pointer;transition:all 0.2s;letter-spacing:1px}
+.btn:hover{border-color:var(--border);background:rgba(0,255,65,0.08);text-shadow:0 0 4px var(--border)}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn.danger:hover{background:rgba(255,0,68,0.1)}
+.btn.info{border-color:var(--info);color:var(--info)}
+.btn.info:hover{background:rgba(0,170,255,0.1)}
+.btn.warn{border-color:var(--warning);color:var(--warning)}
+.btn.warn:hover{background:rgba(255,170,0,0.1)}
+.btn.tiny{padding:2px 6px;font-size:9px}
+.main{display:flex;height:calc(100vh - 40px)}
+.palette{width:220px;background:var(--bg-panel);border-right:1px solid var(--border-dim);display:flex;flex-direction:column;overflow:hidden;z-index:50}
+.palette-header{padding:10px 12px;font-size:10px;letter-spacing:3px;border-bottom:1px solid var(--border-dim);color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.palette-scroll{flex:1;overflow-y:auto;padding:8px}
+.palette-cat{margin-bottom:12px}
+.palette-cat-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 6px;margin-bottom:4px;border-left:2px solid;color:var(--text-fg);opacity:0.6}
+.palette-node{padding:6px 8px;margin:2px 0;background:var(--bg-node);border:1px solid var(--border-dim);border-radius:3px;font-size:10px;cursor:grab;display:flex;align-items:center;gap:6px;transition:all 0.15s;user-select:none;position:relative}
+.palette-node:hover{border-color:var(--border);background:var(--bg-node-hover);transform:translateX(2px)}
+.palette-node:active{cursor:grabbing}
+.palette-node .icon{width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:10px;border-radius:2px;font-weight:bold}
+.palette-node.compatible{border-color:var(--success);box-shadow:0 0 6px rgba(0,255,65,0.2)}
+.palette-node.incompatible{opacity:0.4}
+.palette-node .compat-badge{position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:8px;padding:1px 4px;border-radius:2px;display:none}
+.palette-node.compatible .compat-badge{display:block;background:rgba(0,255,65,0.15);color:var(--success);border:1px solid var(--success)}
+.palette-node.incompatible .compat-badge{display:block;background:rgba(255,0,68,0.1);color:var(--danger);border:1px solid var(--danger)}
+.canvas-wrap{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+.canvas-grid{position:absolute;top:0;left:0;right:0;bottom:0;background-image:linear-gradient(rgba(0,255,65,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,65,0.03) 1px,transparent 1px);background-size:20px 20px;pointer-events:none}
+#graph-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1}
+#graph-svg .connection{fill:none;stroke:var(--text-dim);stroke-width:1.5;transition:stroke 0.3s}
+#graph-svg .connection.valid{stroke:var(--success);filter:drop-shadow(0 0 3px var(--success))}
+#graph-svg .connection.invalid{stroke:var(--danger);filter:drop-shadow(0 0 3px var(--danger))}
+#graph-svg .connection.active{stroke-dasharray:8 4;animation:dashflow 1s linear infinite}
+@keyframes dashflow{to{stroke-dashoffset:-24}}
+#graph-svg .connection.highlight{stroke:var(--warning);stroke-width:2.5;filter:drop-shadow(0 0 4px var(--warning))}
+#graph-svg .connection-hit{fill:none;stroke:transparent;stroke-width:8;pointer-events:stroke;cursor:pointer}
+.node{position:absolute;width:170px;background:var(--bg-node);border:1px solid var(--border-dim);border-radius:4px;z-index:10;cursor:grab;user-select:none;transition:box-shadow 0.2s,border-color 0.2s}
+.node:hover{border-color:var(--border);box-shadow:0 0 12px rgba(0,255,65,0.15)}
+.node.selected{border-color:var(--info);box-shadow:0 0 16px rgba(0,170,255,0.2)}
+.node.dragging{cursor:grabbing;opacity:0.9;z-index:100}
+.node.highlighted{border-color:var(--warning);box-shadow:0 0 12px rgba(255,170,0,0.2)}
+.node-header{padding:6px 8px;font-size:10px;font-weight:bold;letter-spacing:1px;border-bottom:1px solid var(--border-dim);display:flex;align-items:center;justify-content:space-between}
+.node-body{padding:6px 8px;font-size:9px;color:var(--text-fg);opacity:0.7;min-height:24px}
+.node-ports{display:flex;justify-content:space-between;padding:4px 0}
+.port{width:10px;height:10px;border-radius:50%;background:var(--bg);border:1.5px solid var(--text-dim);cursor:crosshair;transition:all 0.2s;position:relative}
+.port:hover{border-color:var(--border);box-shadow:0 0 6px var(--border);transform:scale(1.3)}
+.port.input{margin-left:-5px}
+.port.output{margin-right:-5px}
+.port.connected{background:var(--border);border-color:var(--border)}
+.port.highlight{background:var(--warning);border-color:var(--warning);box-shadow:0 0 6px var(--warning)}
+.port-label{position:absolute;top:50%;transform:translateY(-50%);font-size:7px;white-space:nowrap;opacity:0;transition:opacity 0.2s;pointer-events:none;color:var(--text-fg)}
+.port:hover .port-label{opacity:1}
+.port.input .port-label{left:14px}
+.port.output .port-label{right:14px}
+.node-delete{position:absolute;top:-8px;right:-8px;width:16px;height:16px;background:var(--danger);color:#fff;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.2s;z-index:20}
+.node:hover .node-delete{opacity:1}
+.inspector{width:380px;background:var(--bg-panel);border-left:1px solid var(--border-dim);display:flex;flex-direction:column;z-index:50}
+.inspector-header{padding:10px 12px;font-size:10px;letter-spacing:3px;border-bottom:1px solid var(--border-dim);color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.inspector-body{flex:1;overflow-y:auto;padding:12px}
+.inspector-section{margin-bottom:16px}
+.inspector-section-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border-dim);display:flex;justify-content:space-between;align-items:center}
+.inspector-row{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dotted var(--border-dim)}
+.inspector-row .label{color:var(--text-dim)}
+.inspector-row .value{color:var(--text-fg);text-align:right}
+.tag{display:inline-block;padding:1px 6px;border-radius:2px;font-size:9px;margin:1px;border:1px solid}
+.tag.type-in{background:rgba(0,170,255,0.1);border-color:var(--info);color:var(--info)}
+.tag.type-out{background:rgba(0,255,65,0.1);border-color:var(--success);color:var(--success)}
+.tag.severity-crit{background:rgba(255,0,68,0.15);border-color:var(--danger);color:var(--danger)}
+.tag.severity-high{background:rgba(255,170,0,0.15);border-color:var(--warning);color:var(--warning)}
+.tag.severity-med{background:rgba(0,170,255,0.15);border-color:var(--info);color:var(--info)}
+.tag.severity-low{background:rgba(0,255,65,0.1);border-color:var(--success);color:var(--success)}
+.flow-viz{background:var(--bg-card);border:1px solid var(--border-dim);border-radius:4px;padding:10px;margin-bottom:12px;overflow-x:auto}
+.flow-track{display:flex;align-items:center;gap:0;min-width:fit-content}
+.flow-step{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:70px}
+.flow-step-box{background:var(--bg-node);border:1px solid var(--border-dim);border-radius:3px;padding:4px 8px;font-size:9px;text-align:center;max-width:90px;word-break:break-word}
+.flow-step-box.start{border-color:var(--success)}
+.flow-step-box.end{border-color:var(--danger)}
+.flow-step-box.highlight{border-color:var(--warning);box-shadow:0 0 8px rgba(255,170,0,0.2)}
+.flow-step-type{font-size:7px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px}
+.flow-arrow{color:var(--text-dim);font-size:14px;padding:0 4px}
+.flow-arrow.valid{color:var(--success)}
+.flow-arrow.invalid{color:var(--danger)}
+.helper-card{background:var(--bg-card);border:1px solid var(--border-dim);border-radius:4px;padding:10px;margin-bottom:10px}
+.helper-title{font-size:10px;font-weight:bold;color:var(--text-bright);margin-bottom:6px;letter-spacing:1px}
+.helper-sub{font-size:9px;color:var(--text-dim);margin-bottom:4px}
+.helper-rec{display:flex;align-items:center;gap:8px;padding:4px 6px;margin:2px 0;background:var(--bg-node);border:1px solid var(--border-dim);border-radius:3px;cursor:pointer;transition:all 0.15s;font-size:9px}
+.helper-rec:hover{border-color:var(--border);background:var(--bg-node-hover)}
+.helper-rec .rec-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:8px;border-radius:2px;font-weight:bold}
+.helper-rec .rec-why{margin-left:auto;font-size:8px;color:var(--text-dim);font-style:italic}
+.helper-rec.compatible{border-left:2px solid var(--success)}
+.helper-rec.incompatible{border-left:2px solid var(--danger);opacity:0.6}
+.encyclo-card{background:var(--bg-card);border:1px solid var(--border-dim);border-radius:4px;padding:10px;margin-bottom:10px;display:none}
+.encyclo-card.active{display:block}
+.encyclo-title{font-size:11px;font-weight:bold;color:var(--text-bright);margin-bottom:4px}
+.encyclo-target{font-size:9px;color:var(--warning);margin-bottom:6px}
+.encyclo-desc{font-size:10px;color:var(--text-fg);opacity:0.8;line-height:1.5;margin-bottom:8px}
+.encyclo-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.encyclo-prereq{font-size:9px;color:var(--text-dim);border-top:1px solid var(--border-dim);padding-top:6px;margin-top:6px}
+.encyclo-prereq span{color:var(--info)}
+.encyclo-mitigation{font-size:9px;color:var(--text-dim);border-top:1px solid var(--border-dim);padding-top:6px;margin-top:6px}
+.encyclo-mitigation span{color:var(--success)}
+.payload-box{background:var(--bg);border:1px solid var(--border-dim);border-radius:3px;padding:8px;font-size:10px;color:var(--text-fg);white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;font-family:var(--font-mono);line-height:1.5}
+.payload-box.empty{color:var(--text-dim);font-style:italic}
+.chain-status{padding:8px;border-radius:3px;font-size:10px;margin-bottom:8px;border:1px solid}
+.chain-status.valid{background:rgba(0,255,65,0.05);border-color:var(--success);color:var(--success)}
+.chain-status.invalid{background:rgba(255,0,68,0.05);border-color:var(--danger);color:var(--danger)}
+.chain-status.neutral{background:rgba(0,170,255,0.05);border-color:var(--info);color:var(--info)}
+.console{height:100px;background:var(--bg);border-top:1px solid var(--border-dim);display:flex;flex-direction:column}
+.console-header{padding:4px 12px;font-size:9px;letter-spacing:2px;border-bottom:1px solid var(--border-dim);display:flex;justify-content:space-between;align-items:center}
+.console-body{flex:1;overflow-y:auto;padding:6px 12px;font-size:10px;line-height:1.4}
+.console-line{margin:1px 0;padding-left:12px;position:relative}
+.console-line::before{content:">";position:absolute;left:0;color:var(--text-dim)}
+.console-line.info{color:var(--info)}
+.console-line.success{color:var(--success)}
+.console-line.error{color:var(--danger)}
+.console-line.warn{color:var(--warning)}
+.preset-btn{display:block;width:100%;text-align:left;margin:2px 0;font-size:9px}
+.preset-btn .preset-meta{float:right;color:var(--text-dim);font-size:8px}
+.tooltip{position:fixed;background:var(--bg-node);border:1px solid var(--border);padding:6px 10px;border-radius:3px;font-size:10px;z-index:1000;pointer-events:none;max-width:240px;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+.tab-bar{display:flex;gap:2px;margin-bottom:8px;border-bottom:1px solid var(--border-dim);padding-bottom:4px}
+.tab-btn{padding:3px 10px;font-size:9px;background:transparent;border:1px solid transparent;color:var(--text-dim);cursor:pointer;font-family:var(--font-mono);letter-spacing:1px}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{border-color:var(--border);color:var(--text);background:rgba(0,255,65,0.05)}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border-dim);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="title">REFLEX_CHAIN_BUILDER v1.3</span>
+  <span style="color:var(--text-dim);font-size:10px;">13th Hour // Chain Intelligence</span>
+  <div class="status">
+    <span id="py-status-text" style="color:var(--text-dim);font-size:10px;">PYODIDE: INIT...</span>
+    <div id="py-status-dot" class="status-dot"></div>
+    <button class="btn tiny" onclick="toggleEncyclopedia()">ENCYCLOPEDIA</button>
+    <button class="btn" onclick="clearCanvas()">CLEAR</button>
+    <button class="btn" onclick="validateAll()">VALIDATE</button>
+    <button class="btn danger" onclick="generatePayload()">GENERATE</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="palette">
+    <div class="palette-header">
+      <span>REFLEX NODES</span>
+      <span id="palette-count" style="font-size:9px;color:var(--text-dim)">0</span>
+    </div>
+    <div class="palette-scroll" id="palette-scroll"></div>
+  </div>
+  <div class="canvas-wrap" id="canvas-wrap">
+    <div class="canvas-grid"></div>
+    <svg id="graph-svg"></svg>
+    <div id="nodes-container"></div>
+  </div>
+  <div class="inspector">
+    <div class="inspector-header">
+      <span>INSPECTOR</span>
+      <span id="chain-count" style="font-size:9px;color:var(--text-dim)">0 chains</span>
+    </div>
+    <div class="inspector-body" id="inspector-body">
+      <div class="inspector-section">
+        <div class="inspector-section-title">Chain Status</div>
+        <div id="chain-status" class="chain-status neutral">Initializing Pyodide...</div>
+      </div>
+      <div class="inspector-section" id="flow-section" style="display:none">
+        <div class="inspector-section-title">Active Chain Flow</div>
+        <div class="flow-viz" id="flow-viz"></div>
+      </div>
+      <div class="inspector-section">
+        <div class="inspector-section-title">Selected Node</div>
+        <div id="node-details">Click a node to view details.</div>
+      </div>
+      <div class="inspector-section" id="helper-section" style="display:none">
+        <div class="inspector-section-title">
+          <span>Smart Helper</span>
+          <span style="font-size:8px;color:var(--text-dim)">RECOMMENDATIONS</span>
+        </div>
+        <div id="helper-content"></div>
+      </div>
+      <div class="inspector-section">
+        <div class="inspector-section-title">Generated Payload</div>
+        <div id="payload-output" class="payload-box empty">Waiting for WASM backend...</div>
+      </div>
+      <div class="inspector-section" id="encyclo-section" style="display:none">
+        <div class="inspector-section-title">Chain Encyclopedia</div>
+        <div id="encyclo-content"></div>
+      </div>
+      <div class="inspector-section">
+        <div class="inspector-section-title">Preset Chains</div>
+        <div id="preset-chains"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="console">
+  <div class="console-header">
+    <span>SYSTEM LOG</span>
+    <button class="btn" style="padding:2px 8px;font-size:9px;" onclick="clearLog()">CLEAR</button>
+  </div>
+  <div class="console-body" id="console-body"></div>
+</div>
+
+<script>
+
+// ============================================================
+// REFLEX_CHAIN_BUILDER v1.3 - Chain Intelligence
+// Zero template literals. WASM backend. Enhanced displays.
+// ============================================================
+
+var PY_MODULE_B64 = "aW1wb3J0IGpzb24sIGJhc2U2NCwgdGV4dHdyYXAKCkNBVEVHT1JJRVMgPSB7CiAgICAiZm9ybWF0IjogeyJsYWJlbCI6ICJGb3JtYXQgUGFyc2VyIiwgImNvbG9yIjogIiMwMGZmNDEifSwKICAgICJlbmNvZGVyIjogeyJsYWJlbCI6ICJFbmNvZGVyIiwgImNvbG9yIjogIiMwMGFhZmYifSwKICAgICJuZXR3b3JrIjogeyJsYWJlbCI6ICJOZXR3b3JrIiwgImNvbG9yIjogIiNmZmFhMDAifSwKICAgICJjcnlwdG8iOiB7ImxhYmVsIjogIkNyeXB0byIsICJjb2xvciI6ICIjZmYwMGZmIn0sCiAgICAiY29udGFpbmVyIjogeyJsYWJlbCI6ICJDb250YWluZXIiLCAiY29sb3IiOiAiIzAwZmZmZiJ9LAogICAgImV4cGxvaXQiOiB7ImxhYmVsIjogIkV4cGxvaXQiLCAiY29sb3IiOiAiI2ZmMDA0NCJ9LAogICAgImRhdGEiOiB7ImxhYmVsIjogIkRhdGEiLCAiY29sb3IiOiAiI2ZmZmYwMCJ9LAogICAgInZjcyI6IHsibGFiZWwiOiAiVmVyc2lvbiBDb250cm9sIiwgImNvbG9yIjogIiNhYTY2ZmYifSwKICAgICJidWlsZCI6IHsibGFiZWwiOiAiQnVpbGQgU3lzdGVtIiwgImNvbG9yIjogIiNmZjg4MDAifSwKICAgICJkb2MiOiB7ImxhYmVsIjogIkRvY3VtZW50YXRpb24iLCAiY29sb3IiOiAiIzY2ZmZhYSJ9LAogICAgInRlc3QiOiB7ImxhYmVsIjogIlRlc3RpbmciLCAiY29sb3IiOiAiI2ZmNjZhYSJ9LAp9CgpOT0RFX0RFRlMgPSB7CiAgICAibWFya2Rvd25fcGFyc2VyIjogeyJuYW1lIjogIk1hcmtkb3duIFBhcnNlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiTXwiLCAiZGVzYyI6ICJQYXJzZXMgbWFya2Rvd24gc3ludGF4IGludG8gQVNUIGVsZW1lbnRzLiIsICJpbnB1dHMiOiBbInRleHQiXSwgIm91dHB1dHMiOiBbIm1hcmtkb3duX2FzdCJdfSwKICAgICJjb2RlX2V4dHJhY3RvciI6IHsibmFtZSI6ICJDb2RlIEV4dHJhY3RvciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAie30iLCAiZGVzYyI6ICJFeHRyYWN0cyBmZW5jZWQgY29kZSBibG9ja3MgZnJvbSBtYXJrZG93biBBU1QuIiwgImlucHV0cyI6IFsibWFya2Rvd25fYXN0Il0sICJvdXRwdXRzIjogWyJjb2RlIl19LAogICAgInRlbXBsYXRlX2VuZ2luZSI6IHsibmFtZSI6ICJUZW1wbGF0ZSBFbmdpbmUiLCAiY2F0IjogImV4cGxvaXQiLCAiaWNvbiI6ICJUPiIsICJkZXNjIjogIkV2YWx1YXRlcyB0ZW1wbGF0ZSBkaXJlY3RpdmVzIChKaW5qYTIsIE11c3RhY2hlLCBldGMpLiIsICJpbnB1dHMiOiBbImNvZGUiLCJ0ZXh0Il0sICJvdXRwdXRzIjogWyJjb21tYW5kIiwiamF2YXNjcmlwdCJdfSwKICAgICJ1cmxfcGFyc2VyIjogeyJuYW1lIjogIlVSTCBQYXJzZXIiLCAiY2F0IjogIm5ldHdvcmsiLCAiaWNvbiI6ICJVUkwiLCAiZGVzYyI6ICJQYXJzZXMgVVJMIHNjaGVtZSwgaG9zdCwgcGF0aCwgcXVlcnksIGZyYWdtZW50LiIsICJpbnB1dHMiOiBbInRleHQiXSwgIm91dHB1dHMiOiBbInVybCJdfSwKICAgICJkYXRhX3VybF9idWlsZGVyIjogeyJuYW1lIjogIkRhdGEgVVJMIEJ1aWxkZXIiLCAiY2F0IjogIm5ldHdvcmsiLCAiaWNvbiI6ICJEOiIsICJkZXNjIjogIkNvbnN0cnVjdHMgZGF0YTogVVJMcyB3aXRoIGVtYmVkZGVkIGNvbnRlbnQuIiwgImlucHV0cyI6IFsidGV4dCIsImJhc2U2NCIsImh0bWwiLCJqYXZhc2NyaXB0Iiwic3ZnIl0sICJvdXRwdXRzIjogWyJkYXRhX3VybCJdfSwKICAgICJiYXNlNjRfZGVjb2RlciI6IHsibmFtZSI6ICJCYXNlNjQgRGVjb2RlciIsICJjYXQiOiAiZW5jb2RlciIsICJpY29uIjogIkI2NCIsICJkZXNjIjogIkRlY29kZXMgQmFzZTY0L1VSTC1zYWZlIEJhc2U2NCB0byBiaW5hcnkuIiwgImlucHV0cyI6IFsiYmFzZTY0Il0sICJvdXRwdXRzIjogWyJiaW5hcnkiLCJ0ZXh0IiwiaHRtbCIsImphdmFzY3JpcHQiXX0sCiAgICAiYmFzZTY0X2VuY29kZXIiOiB7Im5hbWUiOiAiQmFzZTY0IEVuY29kZXIiLCAiY2F0IjogImVuY29kZXIiLCAiaWNvbiI6ICJiNjQiLCAiZGVzYyI6ICJFbmNvZGVzIGJpbmFyeS90ZXh0IHRvIEJhc2U2NC4iLCAiaW5wdXRzIjogWyJ0ZXh0IiwiYmluYXJ5IiwiaHRtbCIsImphdmFzY3JpcHQiLCJzdmciXSwgIm91dHB1dHMiOiBbImJhc2U2NCJdfSwKICAgICJqc19leGVjdXRvciI6IHsibmFtZSI6ICJKUyBFeGVjdXRvciIsICJjYXQiOiAiZXhwbG9pdCIsICJpY29uIjogIkpTISIsICJkZXNjIjogIkV4ZWN1dGVzIEphdmFTY3JpcHQgaW4gYnJvd3NlciBvciBOb2RlIGNvbnRleHQuIiwgImlucHV0cyI6IFsiamF2YXNjcmlwdCIsImh0bWwiLCJkYXRhX3VybCJdLCAib3V0cHV0cyI6IFsiZXhwbG9pdCJdfSwKICAgICJpc29fdGltZXN0YW1wIjogeyJuYW1lIjogIklTTyBUaW1lc3RhbXAiLCAiY2F0IjogImRhdGEiLCAiaWNvbiI6ICJUIiwgImRlc2MiOiAiR2VuZXJhdGVzL3BhcnNlcyBJU08gODYwMSBkYXRldGltZSBzdHJpbmdzLiIsICJpbnB1dHMiOiBbInRleHQiXSwgIm91dHB1dHMiOiBbInRpbWVzdGFtcCJdfSwKICAgICJtaW1lX2VuY29kZXIiOiB7Im5hbWUiOiAiTUlNRSBFbmNvZGVyIiwgImNhdCI6ICJlbmNvZGVyIiwgImljb24iOiAiTUlNRSIsICJkZXNjIjogIlJGQyAyMDQ3LzIyMzEgZW5jb2RlZC13b3JkIGdlbmVyYXRpb24uIiwgImlucHV0cyI6IFsidGV4dCIsInRpbWVzdGFtcCJdLCAib3V0cHV0cyI6IFsibWltZV9lbmNvZGVkIl19LAogICAgIm1pbWVfZGVjb2RlciI6IHsibmFtZSI6ICJNSU1FIERlY29kZXIiLCAiY2F0IjogImVuY29kZXIiLCAiaWNvbiI6ICJtaW1lIiwgImRlc2MiOiAiRGVjb2RlcyBSRkMgMjA0NyBlbmNvZGVkLXdvcmRzLiIsICJpbnB1dHMiOiBbIm1pbWVfZW5jb2RlZCJdLCAib3V0cHV0cyI6IFsidGV4dCIsInRpbWVzdGFtcCJdfSwKICAgICJqc29uX3BhcnNlciI6IHsibmFtZSI6ICJKU09OIFBhcnNlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAieyB9IiwgImRlc2MiOiAiUGFyc2VzIEpTT04gc3RyaW5ncyBpbnRvIG9iamVjdHMuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsianNvbl9vYmoiXX0sCiAgICAianNvbl9lbmNvZGVyIjogeyJuYW1lIjogIkpTT04gRW5jb2RlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiezt9IiwgImRlc2MiOiAiU2VyaWFsaXplcyBvYmplY3RzIHRvIEpTT04gc3RyaW5ncy4iLCAiaW5wdXRzIjogWyJqc29uX29iaiJdLCAib3V0cHV0cyI6IFsidGV4dCJdfSwKICAgICJjb21tYW5kX2luamVjdG9yIjogeyJuYW1lIjogIkNvbW1hbmQgSW5qZWN0b3IiLCAiY2F0IjogImV4cGxvaXQiLCAiaWNvbiI6ICJDTUQiLCAiZGVzYyI6ICJJbmplY3RzIHNoZWxsIGNvbW1hbmRzIHZpYSBwYXJhbWV0ZXIgc211Z2dsaW5nLiIsICJpbnB1dHMiOiBbInRleHQiLCJqc29uX29iaiIsInNxbCJdLCAib3V0cHV0cyI6IFsiY29tbWFuZCJdfSwKICAgICJ1bmljb2RlX25vcm1hbGl6ZXIiOiB7Im5hbWUiOiAiVW5pY29kZSBOb3JtYWxpemVyIiwgImNhdCI6ICJmb3JtYXQiLCAiaWNvbiI6ICJVKyIsICJkZXNjIjogIk5GQy9ORkQvTkZLQy9ORktEIG5vcm1hbGl6YXRpb24uIiwgImlucHV0cyI6IFsidGV4dCIsInVuaWNvZGUiXSwgIm91dHB1dHMiOiBbInVuaWNvZGUiLCJ6d2oiXX0sCiAgICAiendqX3NlcXVlbmNlIjogeyJuYW1lIjogIlpXSiBTZXF1ZW5jZSIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiWldKIiwgImRlc2MiOiAiWmVyby1XaWR0aCBKb2luZXIgc2VxdWVuY2UgYnVpbGRlci4iLCAiaW5wdXRzIjogWyJ1bmljb2RlIiwidGV4dCJdLCAib3V0cHV0cyI6IFsiendqIiwidGV4dCJdfSwKICAgICJ0ZW1wbGF0ZV9pbmplY3RvciI6IHsibmFtZSI6ICJUZW1wbGF0ZSBJbmplY3RvciIsICJjYXQiOiAiZXhwbG9pdCIsICJpY29uIjogInt7IiwgImRlc2MiOiAiU2VydmVyLXNpZGUgdGVtcGxhdGUgaW5qZWN0aW9uIChTU1RJKS4iLCAiaW5wdXRzIjogWyJ0ZXh0IiwiendqIiwidW5pY29kZSJdLCAib3V0cHV0cyI6IFsiY29tbWFuZCIsImphdmFzY3JpcHQiXX0sCiAgICAic2hlYmFuZ19wYXJzZXIiOiB7Im5hbWUiOiAiU2hlYmFuZyBQYXJzZXIiLCAiY2F0IjogImZvcm1hdCIsICJpY29uIjogIiMhIiwgImRlc2MiOiAiUGFyc2VzIGludGVycHJldGVyIGRpcmVjdGl2ZXMuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsic2hlYmFuZyJdfSwKICAgICJkb2NrZXJmaWxlX3BhcnNlciI6IHsibmFtZSI6ICJEb2NrZXJmaWxlIFBhcnNlciIsICJjYXQiOiAiY29udGFpbmVyIiwgImljb24iOiAiREtSIiwgImRlc2MiOiAiUGFyc2VzIERvY2tlcmZpbGUgaW5zdHJ1Y3Rpb25zLiIsICJpbnB1dHMiOiBbInRleHQiLCJzaGViYW5nIl0sICJvdXRwdXRzIjogWyJkb2NrZXJmaWxlIl19LAogICAgImNvbnRhaW5lcl9lc2NhcGVyIjogeyJuYW1lIjogIkNvbnRhaW5lciBFc2NhcGVyIiwgImNhdCI6ICJleHBsb2l0IiwgImljb24iOiAiRVNDIiwgImRlc2MiOiAiUHJpdmlsZWdlZCBjb250YWluZXIgZXNjYXBlIHRlY2huaXF1ZXMuIiwgImlucHV0cyI6IFsiZG9ja2VyZmlsZSIsImNvbW1hbmQiXSwgIm91dHB1dHMiOiBbImV4cGxvaXQiXX0sCiAgICAibGF0ZXhfcGFyc2VyIjogeyJuYW1lIjogIkxhVGVYIFBhcnNlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiVGVYIiwgImRlc2MiOiAiUGFyc2VzIExhVGVYL1Rpa1ogZW52aXJvbm1lbnRzLiIsICJpbnB1dHMiOiBbInRleHQiXSwgIm91dHB1dHMiOiBbImxhdGV4X2FzdCJdfSwKICAgICJzdmdfZW1iZWRkZXIiOiB7Im5hbWUiOiAiU1ZHIEVtYmVkZGVyIiwgImNhdCI6ICJmb3JtYXQiLCAiaWNvbiI6ICJTVkciLCAiZGVzYyI6ICJFbWJlZHMgU1ZHIHZpYSBkYXRhIFVSTCBvciBkaXJlY3QgaW5jbHVzaW9uLiIsICJpbnB1dHMiOiBbInN2ZyIsImRhdGFfdXJsIiwiYmFzZTY0Il0sICJvdXRwdXRzIjogWyJodG1sIiwibGF0ZXhfYXN0Il19LAogICAgInN2Z19wYXJzZXIiOiB7Im5hbWUiOiAiU1ZHIFBhcnNlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiPD4iLCAiZGVzYyI6ICJQYXJzZXMgU1ZHIERPTSBpbmNsdWRpbmcgZW1iZWRkZWQgc2NyaXB0cy4iLCAiaW5wdXRzIjogWyJzdmciLCJkYXRhX3VybCJdLCAib3V0cHV0cyI6IFsiamF2YXNjcmlwdCIsImh0bWwiXX0sCiAgICAiand0X3BhcnNlciI6IHsibmFtZSI6ICJKV1QgUGFyc2VyIiwgImNhdCI6ICJjcnlwdG8iLCAiaWNvbiI6ICJKV1QiLCAiZGVzYyI6ICJQYXJzZXMgSldUIGhlYWRlciBhbmQgcGF5bG9hZCAoQmFzZTY0VVJMKS4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJqd3RfY2xhaW1zIl19LAogICAgImp3dF9mb3JnZXIiOiB7Im5hbWUiOiAiSldUIEZvcmdlciIsICJjYXQiOiAiY3J5cHRvIiwgImljb24iOiAiald0IiwgImRlc2MiOiAiQ3JlYXRlcyBKV1Qgd2l0aCBhbGc6bm9uZSBvciBrZXkgY29uZnVzaW9uLiIsICJpbnB1dHMiOiBbImp3dF9jbGFpbXMiLCJqc29uX29iaiJdLCAib3V0cHV0cyI6IFsidGV4dCJdfSwKICAgICJzcWxfcGFyc2VyIjogeyJuYW1lIjogIlNRTCBQYXJzZXIiLCAiY2F0IjogImZvcm1hdCIsICJpY29uIjogIlNRTCIsICJkZXNjIjogIlBhcnNlcyBTUUwgcXVlcmllcyBmb3IgaW5qZWN0aW9uIHBvaW50cy4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJzcWwiXX0sCiAgICAic3FsX2luamVjdG9yIjogeyJuYW1lIjogIlNRTCBJbmplY3RvciIsICJjYXQiOiAiZXhwbG9pdCIsICJpY29uIjogIidPUiIsICJkZXNjIjogIkNvbnN0cnVjdHMgU1FMIGluamVjdGlvbiBwYXlsb2Fkcy4iLCAiaW5wdXRzIjogWyJzcWwiLCJ0ZXh0IiwianNvbl9vYmoiXSwgIm91dHB1dHMiOiBbImV4cGxvaXQiXX0sCiAgICAiaG9tb2dyYXBoX2dlbmVyYXRvciI6IHsibmFtZSI6ICJIb21vZ3JhcGggR2VuIiwgImNhdCI6ICJuZXR3b3JrIiwgImljb24iOiAiSEdNIiwgImRlc2MiOiAiR2VuZXJhdGVzIHZpc3VhbGx5IHNwb29mZWQgZG9tYWlucyB1c2luZyBDeXJpbGxpYy9HcmVlay4iLCAiaW5wdXRzIjogWyJ0ZXh0IiwidW5pY29kZSJdLCAib3V0cHV0cyI6IFsiaWRuIiwidXJsIl19LAogICAgImlkbl9lbmNvZGVyIjogeyJuYW1lIjogIklETiBFbmNvZGVyIiwgImNhdCI6ICJuZXR3b3JrIiwgImljb24iOiAiSUROIiwgImRlc2MiOiAiUHVueWNvZGUgZW5jb2RpbmcgZm9yIGludGVybmF0aW9uYWxpemVkIGRvbWFpbnMuIiwgImlucHV0cyI6IFsiaWRuIiwidGV4dCJdLCAib3V0cHV0cyI6IFsidXJsIiwidGV4dCJdfSwKICAgICJwaGlzaGluZ19idWlsZGVyIjogeyJuYW1lIjogIlBoaXNoaW5nIEJ1aWxkZXIiLCAiY2F0IjogImV4cGxvaXQiLCAiaWNvbiI6ICJQSFMiLCAiZGVzYyI6ICJDb25zdHJ1Y3RzIGNyZWRlbnRpYWwgaGFydmVzdGluZyBwYWdlcy4iLCAiaW5wdXRzIjogWyJ1cmwiLCJpZG4iLCJodG1sIl0sICJvdXRwdXRzIjogWyJleHBsb2l0Il19LAogICAgInFyX2RlY29kZXIiOiB7Im5hbWUiOiAiUVIgRGVjb2RlciIsICJjYXQiOiAiZGF0YSIsICJpY29uIjogIlFSIiwgImRlc2MiOiAiRGVjb2RlcyBRUiBjb2RlIHBheWxvYWQgc3RyaW5ncy4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJxcl9kYXRhIiwiYmFzZTY0Il19LAogICAgInBpY2tsZV9kZWNvZGVyIjogeyJuYW1lIjogIlBpY2tsZSBEZWNvZGVyIiwgImNhdCI6ICJkYXRhIiwgImljb24iOiAiUENLIiwgImRlc2MiOiAiRGVzZXJpYWxpemVzIFB5dGhvbiBwaWNrbGUgc3RyZWFtcy4iLCAiaW5wdXRzIjogWyJiaW5hcnkiLCJiYXNlNjQiXSwgIm91dHB1dHMiOiBbInB5dGhvbl9vYmoiLCJjb21tYW5kIl19LAogICAgInJjZV90cmlnZ2VyIjogeyJuYW1lIjogIlJDRSBUcmlnZ2VyIiwgImNhdCI6ICJleHBsb2l0IiwgImljb24iOiAiUkNFIiwgImRlc2MiOiAiUmVtb3RlIGNvZGUgZXhlY3V0aW9uIHZpYSBkZXNlcmlhbGl6YXRpb24uIiwgImlucHV0cyI6IFsicHl0aG9uX29iaiIsImNvbW1hbmQiLCJwaWNrbGUiXSwgIm91dHB1dHMiOiBbImV4cGxvaXQiXX0sCiAgICAiaW1hZ2VfbG9hZGVyIjogeyJuYW1lIjogIkltYWdlIExvYWRlciIsICJjYXQiOiAiZGF0YSIsICJpY29uIjogIklNRyIsICJkZXNjIjogIkxvYWRzIGltYWdlIHBpeGVsIGRhdGEgKFJHQi9SR0JBKS4iLCAiaW5wdXRzIjogWyJiaW5hcnkiLCJ0ZXh0Il0sICJvdXRwdXRzIjogWyJpbWFnZV9waXhlbHMiXX0sCiAgICAibHNiX2V4dHJhY3RvciI6IHsibmFtZSI6ICJMU0IgRXh0cmFjdG9yIiwgImNhdCI6ICJkYXRhIiwgImljb24iOiAiTFNCIiwgImRlc2MiOiAiRXh0cmFjdHMgbGVhc3Qtc2lnbmlmaWNhbnQgYml0cyBmcm9tIHBpeGVscy4iLCAiaW5wdXRzIjogWyJpbWFnZV9waXhlbHMiXSwgIm91dHB1dHMiOiBbImJpbmFyeSIsInRleHQiXX0sCiAgICAic3RlZ29fZW5jb2RlciI6IHsibmFtZSI6ICJTdGVnbyBFbmNvZGVyIiwgImNhdCI6ICJkYXRhIiwgImljb24iOiAiU1RHIiwgImRlc2MiOiAiRW1iZWRzIHBheWxvYWRzIGluIGltYWdlIExTQiBjaGFubmVscy4iLCAiaW5wdXRzIjogWyJpbWFnZV9waXhlbHMiLCJiaW5hcnkiLCJ0ZXh0Il0sICJvdXRwdXRzIjogWyJpbWFnZV9waXhlbHMiXX0sCiAgICAic2hlbGxjb2RlX2J1aWxkZXIiOiB7Im5hbWUiOiAiU2hlbGxjb2RlIEJ1aWxkZXIiLCAiY2F0IjogImV4cGxvaXQiLCAiaWNvbiI6ICJTQyIsICJkZXNjIjogIkNvbnN0cnVjdHMgZXhlY3V0YWJsZSBzaGVsbGNvZGUgZnJvbSBiaW5hcnkuIiwgImlucHV0cyI6IFsiYmluYXJ5IiwidGV4dCJdLCAib3V0cHV0cyI6IFsiZXhwbG9pdCJdfSwKICAgICJ5YW1sX3BhcnNlciI6IHsibmFtZSI6ICJZQU1MIFBhcnNlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiWU1MIiwgImRlc2MiOiAiUGFyc2VzIFlBTUwgaW50byBvYmplY3RzLiBWdWxuZXJhYmxlIHRvIGRlc2VyaWFsaXphdGlvbi4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJqc29uX29iaiIsImNvbW1hbmQiXX0sCiAgICAiaW5pX3BhcnNlciI6IHsibmFtZSI6ICJJTkkgUGFyc2VyIiwgImNhdCI6ICJmb3JtYXQiLCAiaWNvbiI6ICJJTkkiLCAiZGVzYyI6ICJQYXJzZXMgSU5JIGNvbmZpZ3VyYXRpb24gc2VjdGlvbnMuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsianNvbl9vYmoiXX0sCiAgICAiaGFzaF92ZXJpZmllciI6IHsibmFtZSI6ICJIYXNoIFZlcmlmaWVyIiwgImNhdCI6ICJjcnlwdG8iLCAiaWNvbiI6ICJIU0giLCAiZGVzYyI6ICJWZXJpZmllcyBiY3J5cHQvYXJnb24yL3NoYTI1NiBoYXNoZXMuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsiYm9vbGVhbiJdfSwKICAgICJwZW1fcGFyc2VyIjogeyJuYW1lIjogIlBFTSBQYXJzZXIiLCAiY2F0IjogImNyeXB0byIsICJpY29uIjogIlBFTSIsICJkZXNjIjogIlBhcnNlcyBQRU0tZW5jb2RlZCBjZXJ0aWZpY2F0ZXMgYW5kIGtleXMuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsiY2VydGlmaWNhdGUiLCJwcml2YXRlX2tleSJdfSwKICAgICJzc2hfa2V5X3BhcnNlciI6IHsibmFtZSI6ICJTU0ggS2V5IFBhcnNlciIsICJjYXQiOiAiY3J5cHRvIiwgImljb24iOiAiU1NIIiwgImRlc2MiOiAiUGFyc2VzIHNzaC1yc2EgLyBzc2gtZWQyNTUxOSBwdWJsaWMga2V5cy4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJzc2hfa2V5Il19LAogICAgImdpdF9kaWZmX3BhcnNlciI6IHsibmFtZSI6ICJHaXQgRGlmZiBQYXJzZXIiLCAiY2F0IjogInZjcyIsICJpY29uIjogIkdJVCIsICJkZXNjIjogIlBhcnNlcyB1bmlmaWVkIGRpZmYgZm9ybWF0IGZvciBwYXRjaCBhcHBsaWNhdGlvbi4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJwYXRjaCJdfSwKICAgICJwYXRjaF9hcHBsaWVyIjogeyJuYW1lIjogIlBhdGNoIEFwcGxpZXIiLCAiY2F0IjogInZjcyIsICJpY29uIjogIlBUQyIsICJkZXNjIjogIkFwcGxpZXMgdW5pZmllZCBkaWZmIHBhdGNoZXMgdG8gZmlsZSBzeXN0ZW1zLiIsICJpbnB1dHMiOiBbInBhdGNoIiwidGV4dCJdLCAib3V0cHV0cyI6IFsidGV4dCIsImNvbW1hbmQiXX0sCiAgICAibWFrZWZpbGVfcGFyc2VyIjogeyJuYW1lIjogIk1ha2VmaWxlIFBhcnNlciIsICJjYXQiOiAiYnVpbGQiLCAiaWNvbiI6ICJNS0YiLCAiZGVzYyI6ICJQYXJzZXMgTWFrZWZpbGUgcnVsZXMgYW5kIHJlY2lwZXMuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsiY29tbWFuZCJdfSwKICAgICJwYWNrYWdlX2pzb25fcGFyc2VyIjogeyJuYW1lIjogIlBhY2thZ2UuanNvbiBQYXJzZXIiLCAiY2F0IjogImJ1aWxkIiwgImljb24iOiAiTlBNIiwgImRlc2MiOiAiUGFyc2VzIG5wbSBwYWNrYWdlIG1hbmlmZXN0cy4iLCAiaW5wdXRzIjogWyJ0ZXh0Il0sICJvdXRwdXRzIjogWyJqc29uX29iaiIsImNvbW1hbmQiXX0sCiAgICAiZG9ja2VyX2NvbXBvc2VfcGFyc2VyIjogeyJuYW1lIjogIkNvbXBvc2UgUGFyc2VyIiwgImNhdCI6ICJjb250YWluZXIiLCAiaWNvbiI6ICJDTVAiLCAiZGVzYyI6ICJQYXJzZXMgZG9ja2VyLWNvbXBvc2UueW1sIGZvciBzZXJ2aWNlIG9yY2hlc3RyYXRpb24uIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsiZG9ja2VyZmlsZSIsImNvbW1hbmQiXX0sCiAgICAia3ViZWN0bF9wYXJzZXIiOiB7Im5hbWUiOiAiS3ViZWN0bCBQYXJzZXIiLCAiY2F0IjogImNvbnRhaW5lciIsICJpY29uIjogIks4UyIsICJkZXNjIjogIlBhcnNlcyBLdWJlcm5ldGVzIG1hbmlmZXN0IFlBTUwuIiwgImlucHV0cyI6IFsidGV4dCJdLCAib3V0cHV0cyI6IFsiazhzX21hbmlmZXN0IiwiY29tbWFuZCJdfSwKICAgICJwcm90b2J1Zl9wYXJzZXIiOiB7Im5hbWUiOiAiUHJvdG9idWYgUGFyc2VyIiwgImNhdCI6ICJmb3JtYXQiLCAiaWNvbiI6ICJQQiIsICJkZXNjIjogIkRlc2VyaWFsaXplcyBQcm90b2NvbCBCdWZmZXJzIG1lc3NhZ2VzLiIsICJpbnB1dHMiOiBbImJpbmFyeSJdLCAib3V0cHV0cyI6IFsianNvbl9vYmoiLCJjb21tYW5kIl19LAogICAgImh0dHBfcGFyc2VyIjogeyJuYW1lIjogIkhUVFAgUGFyc2VyIiwgImNhdCI6ICJuZXR3b3JrIiwgImljb24iOiAiSFRUUCIsICJkZXNjIjogIlBhcnNlcyBIVFRQIHJlcXVlc3RzL3Jlc3BvbnNlcyBmb3Igc211Z2dsaW5nLiIsICJpbnB1dHMiOiBbInRleHQiLCJiaW5hcnkiXSwgIm91dHB1dHMiOiBbImh0dHBfb2JqIiwiY29tbWFuZCJdfSwKICAgICJocGFja19kZWNvZGVyIjogeyJuYW1lIjogIkhQQUNLIERlY29kZXIiLCAiY2F0IjogIm5ldHdvcmsiLCAiaWNvbiI6ICJIUDIiLCAiZGVzYyI6ICJEZWNvZGVzIEhUVFAvMiBIUEFDSyBoZWFkZXIgY29tcHJlc3Npb24uIiwgImlucHV0cyI6IFsiYmluYXJ5Il0sICJvdXRwdXRzIjogWyJodHRwX29iaiIsInRleHQiXX0sCiAgICAicGRmX3BhcnNlciI6IHsibmFtZSI6ICJQREYgUGFyc2VyIiwgImNhdCI6ICJmb3JtYXQiLCAiaWNvbiI6ICJQREYiLCAiZGVzYyI6ICJQYXJzZXMgUERGIHN0cnVjdHVyZSBpbmNsdWRpbmcgSlMgYWN0aW9ucy4iLCAiaW5wdXRzIjogWyJiaW5hcnkiLCJ0ZXh0Il0sICJvdXRwdXRzIjogWyJqYXZhc2NyaXB0IiwiY29tbWFuZCJdfSwKICAgICJ3YXNtX3BhcnNlciI6IHsibmFtZSI6ICJXQVNNIFBhcnNlciIsICJjYXQiOiAiZm9ybWF0IiwgImljb24iOiAiV0FTTSIsICJkZXNjIjogIlBhcnNlcyBXZWJBc3NlbWJseSBiaW5hcnkgZm9ybWF0LiIsICJpbnB1dHMiOiBbImJpbmFyeSJdLCAib3V0cHV0cyI6IFsiamF2YXNjcmlwdCIsImNvbW1hbmQiXX0sCiAgICAiZG5zX3R4dF9wYXJzZXIiOiB7Im5hbWUiOiAiRE5TIFRYVCBQYXJzZXIiLCAiY2F0IjogIm5ldHdvcmsiLCAiaWNvbiI6ICJETlMiLCAiZGVzYyI6ICJQYXJzZXMgRE5TIFRYVCByZWNvcmRzIGZvciBwYXlsb2FkIGRlbGl2ZXJ5LiIsICJpbnB1dHMiOiBbInRleHQiXSwgIm91dHB1dHMiOiBbImJhc2U2NCIsImNvbW1hbmQiXX0sCiAgICAicG9seWdsb3RfYnVpbGRlciI6IHsibmFtZSI6ICJQb2x5Z2xvdCBCdWlsZGVyIiwgImNhdCI6ICJleHBsb2l0IiwgImljb24iOiAiUExHIiwgImRlc2MiOiAiQ29uc3RydWN0cyBwb2x5Z2xvdCBmaWxlcyAoU1ZHK0pTK1BERiwgZXRjKS4iLCAiaW5wdXRzIjogWyJodG1sIiwiamF2YXNjcmlwdCIsInN2ZyIsInBkZiIsInRleHQiXSwgIm91dHB1dHMiOiBbImV4cGxvaXQiXX0sCn0KClBSRVNFVFMgPSBbCiAgICB7Im5hbWUiOiAiQ2hhaW4gMTogTWFya2Rvd24tPkNvZGUtPkV4ZWMiLCAibm9kZXMiOiBbIm1hcmtkb3duX3BhcnNlciIsImNvZGVfZXh0cmFjdG9yIiwidGVtcGxhdGVfZW5naW5lIl19LAogICAgeyJuYW1lIjogIkNoYWluIDI6IFVSTC0+QmFzZTY0LT5KUyIsICJub2RlcyI6IFsiZGF0YV91cmxfYnVpbGRlciIsImJhc2U2NF9kZWNvZGVyIiwianNfZXhlY3V0b3IiXX0sCiAgICB7Im5hbWUiOiAiQ2hhaW4gMzogVGltZXN0YW1wLT5NSU1FLT5KU09OLT5DbWQiLCAibm9kZXMiOiBbImlzb190aW1lc3RhbXAiLCJtaW1lX2VuY29kZXIiLCJqc29uX3BhcnNlciIsImNvbW1hbmRfaW5qZWN0b3IiXX0sCiAgICB7Im5hbWUiOiAiQ2hhaW4gNDogRW1vamktPlVuaWNvZGUtPlpXSi0+U1NUSSIsICJub2RlcyI6IFsidW5pY29kZV9ub3JtYWxpemVyIiwiendqX3NlcXVlbmNlIiwidGVtcGxhdGVfaW5qZWN0b3IiXX0sCiAgICB7Im5hbWUiOiAiQ2hhaW4gNTogU2hlYmFuZy0+RG9ja2VyLT5Fc2NhcGUiLCAibm9kZXMiOiBbInNoZWJhbmdfcGFyc2VyIiwiZG9ja2VyZmlsZV9wYXJzZXIiLCJjb250YWluZXJfZXNjYXBlciJdfSwKICAgIHsibmFtZSI6ICJDaGFpbiA2OiBMYVRlWC0+VGlrWi0+U1ZHLT5KUyIsICJub2RlcyI6IFsibGF0ZXhfcGFyc2VyIiwic3ZnX2VtYmVkZGVyIiwic3ZnX3BhcnNlciIsImpzX2V4ZWN1dG9yIl19LAogICAgeyJuYW1lIjogIkNoYWluIDc6IEpXVC0+SlNPTi0+U1FMLT5JbmoiLCAibm9kZXMiOiBbImp3dF9wYXJzZXIiLCJqd3RfZm9yZ2VyIiwic3FsX3BhcnNlciIsInNxbF9pbmplY3RvciJdfSwKICAgIHsibmFtZSI6ICJDaGFpbiA4OiBVbmljb2RlLT5Ib21vZ3JhcGgtPklETiIsICJub2RlcyI6IFsidW5pY29kZV9ub3JtYWxpemVyIiwiaG9tb2dyYXBoX2dlbmVyYXRvciIsImlkbl9lbmNvZGVyIiwicGhpc2hpbmdfYnVpbGRlciJdfSwKICAgIHsibmFtZSI6ICJDaGFpbiA5OiBRUi0+QmFzZTY0LT5QaWNrbGUtPlJDRSIsICJub2RlcyI6IFsicXJfZGVjb2RlciIsImJhc2U2NF9kZWNvZGVyIiwicGlja2xlX2RlY29kZXIiLCJyY2VfdHJpZ2dlciJdfSwKICAgIHsibmFtZSI6ICJDaGFpbiAxMDogTmV1cmFsLT5MU0ItPlN0ZWdvLT5TQyIsICJub2RlcyI6IFsiaW1hZ2VfbG9hZGVyIiwibHNiX2V4dHJhY3RvciIsInN0ZWdvX2VuY29kZXIiLCJzaGVsbGNvZGVfYnVpbGRlciJdfSwKXQoKUEFZTE9BRFMgPSB7CiAgICAibWFya2Rvd25fcGFyc2VyLGNvZGVfZXh0cmFjdG9yLHRlbXBsYXRlX2VuZ2luZSI6CiAgICAgICAgImBgYHB5dGhvbiIgKyBjaHIoMTApICsgImltcG9ydCBvcyIgKyBjaHIoMTApICsgIm9zLnN5c3RlbSgid2hvYW1pIikiICsgY2hyKDEwKSArICJgYGB7e2V4ZWN1dGV9fSIsCiAgICAiZGF0YV91cmxfYnVpbGRlcixiYXNlNjRfZGVjb2Rlcixqc19leGVjdXRvciI6CiAgICAgICAgImRhdGE6dGV4dC9odG1sO2Jhc2U2NCxQSE5qY21sd2RENWhiR1Z5ZENneEtUd3ZjMk55YVhCMFBnPT0iLAogICAgImlzb190aW1lc3RhbXAsbWltZV9lbmNvZGVyLGpzb25fcGFyc2VyLGNvbW1hbmRfaW5qZWN0b3IiOgogICAgICAgICI9P1VURi04P0I/ZXlKMGFXMWxjM1JoYlhBaU9pQWlNakF5Tmkwd05DMHhObFF3TnpvMU1Eb3dNRm9pTENBaVkyMWtJam9nSW1SaGRHVWdMWE1nTWpBeU5pMHdOQzB4TmxRd056bzFNRG93TUZvaWZRPT0/PSIsCiAgICAidW5pY29kZV9ub3JtYWxpemVyLHp3al9zZXF1ZW5jZSx0ZW1wbGF0ZV9pbmplY3RvciI6CiAgICAgICAgY2hyKDB4MUY0NjgpICsgY2hyKDB4MjAwRCkgKyBjaHIoMHgxRjQ2OSkgKyBjaHIoMHgyMDBEKSArIGNocigweDFGNDY3KSArIGNocigweDIwMEQpICsgY2hyKDB4MUY0NjYpICsgInt7Y29uc3RydWN0b3IuY29uc3RydWN0b3IoImltcG9ydCgnb3MnKS5zeXN0ZW0oJ3dob2FtaScpIikoKX19IiwKICAgICJzaGViYW5nX3BhcnNlcixkb2NrZXJmaWxlX3BhcnNlcixjb250YWluZXJfZXNjYXBlciI6CiAgICAgICAgIiMhL3Vzci9iaW4vZW52IHB5dGhvbjMiICsgY2hyKDEwKSArICIjIGRvY2tlciBydW4gLS1wcml2aWxlZ2VkIC12IC86L2hvc3QgYWxwaW5lIGNocm9vdCAvaG9zdCBzaCIsCiAgICAibGF0ZXhfcGFyc2VyLHN2Z19lbWJlZGRlcixzdmdfcGFyc2VyLGpzX2V4ZWN1dG9yIjoKICAgICAgICAiXFxiZWdpbnt0aWt6cGljdHVyZX0iICsgY2hyKDEwKSArICIgIFxub2RlW2lubmVyIHNlcD0wcHRdIHtcaW5jbHVkZWdyYXBoaWNze2RhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOamNtbHdkRDVoYkdWeWRDZ3hLVHd2YzJOeWFYQjBQZz09fX07IiArIGNocigxMCkgKyAiXFxlbmR7dGlrenBpY3R1cmV9IiwKICAgICJqd3RfcGFyc2VyLGp3dF9mb3JnZXIsc3FsX3BhcnNlcixzcWxfaW5qZWN0b3IiOgogICAgICAgICJleUpoYkdjaU9pSnViMjVsSWl3aWRIbHdJam9pU2xkVUluMC5leUoxYzJWeUlqb2lZV1J0YVc0aUxDSnliMnhsSWpvaWMzVndaWEoxYzJWeUp5QlBVaUFuTVNjOUp6RWlmUS4iLAogICAgInVuaWNvZGVfbm9ybWFsaXplcixob21vZ3JhcGhfZ2VuZXJhdG9yLGlkbl9lbmNvZGVyLHBoaXNoaW5nX2J1aWxkZXIiOgogICAgICAgICJodHRwczovLyIgKyBjaHIoMHgwNDQwKSArIGNocigweDA0MzApICsgY2hyKDB4MDQ0MykgKyBjaHIoMHgwNDQwKSArIGNocigweDA0MzApICsgY2hyKDB4MDRDRikgKyAiLmNvbS9sb2dpbiAgKEN5cmlsbGljIHNwb29mKSIsCiAgICAicXJfZGVjb2RlcixiYXNlNjRfZGVjb2RlcixwaWNrbGVfZGVjb2RlcixyY2VfdHJpZ2dlciI6CiAgICAgICAgIltRUl0gLT4gZ0FTVkNnQUFBQUFBQUFDTUJuTjVjM1JsYlpPVWpBWjNhRzloYldtVWhaUlNsQzQ9IiArIGNocigxMCkgKyAiICAtPiBwaWNrbGUubG9hZHMoKSAtPiBvcy5zeXN0ZW0oIndob2FtaSIpIiwKICAgICJpbWFnZV9sb2FkZXIsbHNiX2V4dHJhY3RvcixzdGVnb19lbmNvZGVyLHNoZWxsY29kZV9idWlsZGVyIjoKICAgICAgICAiW0ltYWdlXSAtPiBMU0IgZXh0cmFjdGlvbiAtPiAiICsgIlx4OTBceDkwXHgzMVx4YzBceDUwXHg2OC4uLiIgKyBjaHIoMTApICsgIiAgLT4gc2hlbGxjb2RlIGVtYmVkZGVkIGluIHBpeGVsIGNoYW5uZWxzIiwKfQoKZGVmIGdldF9ub2RlX2RlZnMoKToKICAgIHJldHVybiBqc29uLmR1bXBzKE5PREVfREVGUykKCmRlZiBnZXRfY2F0ZWdvcmllcygpOgogICAgcmV0dXJuIGpzb24uZHVtcHMoQ0FURUdPUklFUykKCmRlZiBnZXRfcHJlc2V0cygpOgogICAgcmV0dXJuIGpzb24uZHVtcHMoUFJFU0VUUykKCmRlZiBmaW5kX2NoYWlucyhub2Rlc19qc29uLCBjb25uc19qc29uKToKICAgIG5vZGVzID0ganNvbi5sb2Fkcyhub2Rlc19qc29uKQogICAgY29ubnMgPSBqc29uLmxvYWRzKGNvbm5zX2pzb24pCiAgICBpbmNvbWluZyA9IHtuWyJpZCJdOiAwIGZvciBuIGluIG5vZGVzfQogICAgb3V0Z29pbmcgPSB7blsiaWQiXTogMCBmb3IgbiBpbiBub2Rlc30KICAgIGZvciBjIGluIGNvbm5zOgogICAgICAgIGluY29taW5nW2NbInRvIl1dID0gaW5jb21pbmcuZ2V0KGNbInRvIl0sIDApICsgMQogICAgICAgIG91dGdvaW5nW2NbImZyb20iXV0gPSBvdXRnb2luZy5nZXQoY1siZnJvbSJdLCAwKSArIDEKICAgIHN0YXJ0cyA9IFtuIGZvciBuIGluIG5vZGVzIGlmIGluY29taW5nLmdldChuWyJpZCJdLCAwKSA9PSAwXQogICAgY2hhaW5zID0gW10KICAgIGRlZiBkZnMobmlkLCBwYXRoLCBjcGF0aCk6CiAgICAgICAgbnh0ID0gW2MgZm9yIGMgaW4gY29ubnMgaWYgY1siZnJvbSJdID09IG5pZF0KICAgICAgICBpZiBub3Qgbnh0OgogICAgICAgICAgICBpZiBsZW4ocGF0aCkgPiAxOgogICAgICAgICAgICAgICAgY2hhaW5zLmFwcGVuZCh7Im5vZGVzIjogcGF0aFs6XSwgImNvbm5lY3Rpb25zIjogY3BhdGhbOl19KQogICAgICAgICAgICByZXR1cm4KICAgICAgICBmb3IgYyBpbiBueHQ6CiAgICAgICAgICAgIG4gPSBuZXh0KCh4IGZvciB4IGluIG5vZGVzIGlmIHhbImlkIl0gPT0gY1sidG8iXSksIE5vbmUpCiAgICAgICAgICAgIGlmIG46CiAgICAgICAgICAgICAgICBkZnMoY1sidG8iXSwgcGF0aCArIFtuXSwgY3BhdGggKyBbY10pCiAgICBmb3IgcyBpbiBzdGFydHM6CiAgICAgICAgZGZzKHNbImlkIl0sIFtzXSwgW10pCiAgICByZXR1cm4ganNvbi5kdW1wcyhjaGFpbnMpCgpkZWYgZm9ybWF0X2NoYWluX3JlcG9ydChjaGFpbnNfanNvbik6CiAgICBjaGFpbnMgPSBqc29uLmxvYWRzKGNoYWluc19qc29uKQogICAgbGluZXMgPSBbXQogICAgZm9yIGksIGNoYWluIGluIGVudW1lcmF0ZShjaGFpbnMpOgogICAgICAgIHZhbGlkID0gYWxsKGMuZ2V0KCJ2YWxpZCIsIEZhbHNlKSBmb3IgYyBpbiBjaGFpblsiY29ubmVjdGlvbnMiXSkKICAgICAgICBsaW5lcy5hcHBlbmQoIj09PSBDSEFJTiAiICsgc3RyKGkrMSkgKyAiIFsiICsgKCJWQUxJRCIgaWYgdmFsaWQgZWxzZSAiSU5WQUxJRCIpICsgIl0gPT09IikKICAgICAgICBsaW5lcy5hcHBlbmQoIlBhdGg6ICIgKyAiIC0+ICIuam9pbihuWyJuYW1lIl0gZm9yIG4gaW4gY2hhaW5bIm5vZGVzIl0pKQogICAgICAgIGxpbmVzLmFwcGVuZCgiVHlwZXM6ICIgKyAiIC0+ICIuam9pbihjWyJmcm9tVHlwZSJdICsgIi0+IiArIGNbInRvVHlwZSJdIGZvciBjIGluIGNoYWluWyJjb25uZWN0aW9ucyJdKSkKICAgICAgICBsaW5lcy5hcHBlbmQoIiIpCiAgICAgICAgaWYgdmFsaWQ6CiAgICAgICAgICAgIG50ID0gW25bInR5cGVJZCJdIGZvciBuIGluIGNoYWluWyJub2RlcyJdXQogICAgICAgICAgICBrZXkgPSAiLCIuam9pbihudCkKICAgICAgICAgICAgbGluZXMuYXBwZW5kKCJQQVlMT0FEOiIpCiAgICAgICAgICAgIGxpbmVzLmFwcGVuZChQQVlMT0FEUy5nZXQoa2V5LCAiW05vIGdlbmVyYXRvciBmb3I6ICIgKyBrZXkgKyAiXSIpKQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIGxpbmVzLmFwcGVuZCgiUEFZTE9BRDogQ2Fubm90IGdlbmVyYXRlIC0tIHR5cGUgbWlzbWF0Y2ggaW4gY2hhaW4uIikKICAgICAgICBsaW5lcy5hcHBlbmQoIiIpCiAgICAgICAgbGluZXMuYXBwZW5kKCItIiAqIDUwKQogICAgICAgIGxpbmVzLmFwcGVuZCgiIikKICAgIHJldHVybiBjaHIoMTApLmpvaW4obGluZXMpCg==";
+
+var pyodide = null;
+var pyodideReady = false;
+var nodes = [];
+var connections = [];
+var nextNodeId = 1;
+var selectedNodeId = null;
+var draggingNode = null;
+var dragOffset = {x:0, y:0};
+var connectingFrom = null;
+var nodeDefs = {};
+var categories = {};
+var presets = [];
+var encyclopediaVisible = false;
+
+var ENCYCLOPEDIA = {
+  "Chain 1: Markdown->Code->Exec": {
+    target: "Documentation Systems (MkDocs, Jekyll, GitBook)",
+    severity: "crit",
+    cve: "CVE-2019-10906, CVE-2020-28493",
+    description: "Markdown parsers that render fenced code blocks may pass extracted code to template engines. If the template engine supports execution directives (like Jinja2 autoescape off), arbitrary code execution follows.",
+    why: "The parser reflexively formats code blocks. The template engine reflexively evaluates directives. Neither checks if the code should execute.",
+    prerequisites: ["Markdown rendering enabled", "Template engine with execution context", "User-controlled markdown input"],
+    mitigation: "Sandbox template execution. Disable autoescape. Use AST-only markdown parsers."
+  },
+  "Chain 2: URL->Base64->JS": {
+    target: "Web Applications (href, src, redirect handlers)",
+    severity: "high",
+    cve: "CVE-2020-6519, CVE-2021-21220",
+    description: "Data URLs bypass URL validation by embedding content inline. Base64 encoding obfuscates the payload. When parsed as href or src, the browser executes embedded JavaScript.",
+    why: "URL parser accepts data: scheme. Base64 decoder accepts any alphabet. Browser executes script tags reflexively.",
+    prerequisites: ["User-controlled URL in href/src", "No URL scheme whitelist", "Base64 content allowed"],
+    mitigation: "Whitelist http/https schemes only. Validate URL before DOM insertion. CSP frame-src / script-src restrictions."
+  },
+  "Chain 3: Timestamp->MIME->JSON->Cmd": {
+    target: "API Gateways, Log Processors, Email Parsers",
+    severity: "high",
+    cve: "CVE-2019-1010306, CVE-2021-44228 (adjacent)",
+    description: "ISO timestamps parsed as strings can be MIME-encoded. MIME decoders may pass decoded content to JSON parsers. JSON values injected into command templates execute shell commands.",
+    why: "Each parser treats the output of the previous as trusted input. No validation at format boundaries.",
+    prerequisites: ["Timestamp input from external source", "MIME decoding pipeline", "JSON-to-command mapping"],
+    mitigation: "Strict type validation at each boundary. Never pass decoded content to shell commands."
+  },
+  "Chain 4: Emoji->Unicode->ZWJ->SSTI": {
+    target: "Template Engines (Jinja2, Twig, Handlebars)",
+    severity: "crit",
+    cve: "CVE-2016-10745, CVE-2021-23337",
+    description: "Unicode normalization splits emoji into ZWJ sequences. Template engines may interpret ZWJ-combined strings as valid template syntax. SSTI payloads execute via constructor chaining.",
+    why: "Unicode normalizer decomposes emoji. Template lexer does not filter ZWJ sequences. Constructor access grants arbitrary code execution.",
+    prerequisites: ["User input passed to template engine", "Unicode normalization enabled", "No template syntax filtering"],
+    mitigation: "Never pass user input to template render(). Use sandboxed environments. Filter template delimiters."
+  },
+  "Chain 5: Shebang->Docker->Escape": {
+    target: "CI/CD Pipelines, Container Runtimes",
+    severity: "crit",
+    cve: "CVE-2019-5736, CVE-2020-15257",
+    description: "Shebang lines in scripts can be parsed as Dockerfile instructions. Polyglot files trigger container builds with --privileged flags, enabling host filesystem access and container escape.",
+    why: "Dockerfile parser treats comments as instructions when shebang is present. Privileged flag grants full host access.",
+    prerequisites: ["Automated container builds from user code", "No Dockerfile validation", "Privileged containers allowed"],
+    mitigation: "Never build containers from untrusted Dockerfiles. Run containers as unprivileged. Use gVisor/Kata."
+  },
+  "Chain 6: LaTeX->TikZ->SVG->JS": {
+    target: "PDF Generators, Academic Platforms, Overleaf",
+    severity: "high",
+    cve: "CVE-2021-32715, CVE-2023-29469",
+    description: "LaTeX TikZ environments can embed images via data URLs. SVG images containing script tags execute JavaScript when rendered by PDF viewers or browsers.",
+    why: "TikZ includes external graphics. SVG parser executes embedded scripts. PDF viewer renders SVG as interactive content.",
+    prerequisites: ["LaTeX compilation of user input", "TikZ package enabled", "External image inclusion allowed"],
+    mitigation: "Disable external graphics in LaTeX. Use sanitized SVG subsets. Run compilation in sandboxed environment."
+  },
+  "Chain 7: JWT->JSON->SQL->Inj": {
+    target: "Authentication APIs, Microservices",
+    severity: "crit",
+    cve: "CVE-2022-23529, CVE-2020-28042",
+    description: "JWT tokens with alg:none bypass signature verification. Forged claims injected into JSON parameters reach SQL queries without parameterized queries, enabling injection.",
+    why: "JWT parser accepts alg:none. JSON encoder serializes attacker-controlled claims. SQL builder concatenates without sanitization.",
+    prerequisites: ["JWT alg:none accepted", "Claims mapped to SQL parameters", "No parameterized queries"],
+    mitigation: "Reject alg:none. Always verify signatures. Use parameterized queries / ORM."
+  },
+  "Chain 8: Unicode->Homograph->IDN": {
+    target: "Browsers, Email Clients, Phishing Frameworks",
+    severity: "med",
+    cve: "CVE-2017-5892, CVE-2021-4236",
+    description: "Cyrillic and Greek homographs visually spoof ASCII domains. IDN punycode encoding bypasses simple string comparison. Users enter credentials on attacker-controlled domains.",
+    why: "Unicode normalizer preserves visual similarity. IDN encoder creates valid DNS records. User trusts visual appearance.",
+    prerequisites: ["IDN support enabled", "User visits links from untrusted sources", "No visual security indicators"],
+    mitigation: "Display punycode in address bar. Use certificate pinning. Train users on domain verification."
+  },
+  "Chain 9: QR->Base64->Pickle->RCE": {
+    target: "QR Scanners, IoT Devices, Mobile Apps",
+    severity: "crit",
+    cve: "CVE-2019-11340, CVE-2020-11978",
+    description: "QR codes can encode Base64 strings. Scanners that pass decoded data to pickle.loads() execute arbitrary Python objects via __reduce__ methods.",
+    why: "QR decoder extracts any string. Base64 decoder produces binary. Pickle deserializes arbitrary objects including system calls.",
+    prerequisites: ["QR scanning in application", "Base64 decode before processing", "pickle.loads() on untrusted data"],
+    mitigation: "Never use pickle on untrusted data. Use JSON for serialization. Validate QR content format."
+  },
+  "Chain 10: Neural->LSB->Stego->SC": {
+    target: "ML Pipelines, Image Processing Services",
+    severity: "high",
+    cve: "CVE-2021-44228 (adjacent), CVE-2022-42889",
+    description: "Adversarial ML models can embed shellcode in image LSB channels. Image loaders extract pixel data. LSB decoders reconstruct binary payloads. Shellcode executes in memory.",
+    why: "Image loader trusts pixel data. LSB extractor treats all bits as payload. Memory executes extracted bytes.",
+    prerequisites: ["User-uploaded images processed", "LSB extraction enabled", "Extracted bytes executable"],
+    mitigation: "Validate image dimensions before processing. Run image processing in sandbox. Use W^X memory policies."
+  }
+};
+
+// ============================================================
+// FALLBACK DATA (used when Pyodide fails to load)
+// ============================================================
+var FALLBACK_NODE_DEFS = {
+  "markdown_parser": {"name": "Markdown Parser", "cat": "format", "icon": "M|", "desc": "Parses markdown syntax into AST elements.", "inputs": ["text"], "outputs": ["markdown_ast"]},
+  "code_extractor": {"name": "Code Extractor", "cat": "format", "icon": "{}", "desc": "Extracts fenced code blocks from markdown AST.", "inputs": ["markdown_ast"], "outputs": ["code"]},
+  "template_engine": {"name": "Template Engine", "cat": "exploit", "icon": "T>", "desc": "Evaluates template directives (Jinja2, Mustache, etc).", "inputs": ["code","text"], "outputs": ["command","javascript"]},
+  "url_parser": {"name": "URL Parser", "cat": "network", "icon": "URL", "desc": "Parses URL scheme, host, path, query, fragment.", "inputs": ["text"], "outputs": ["url"]},
+  "data_url_builder": {"name": "Data URL Builder", "cat": "network", "icon": "D:", "desc": "Constructs data: URLs with embedded content.", "inputs": ["text","base64","html","javascript","svg"], "outputs": ["data_url"]},
+  "base64_decoder": {"name": "Base64 Decoder", "cat": "encoder", "icon": "B64", "desc": "Decodes Base64/URL-safe Base64 to binary.", "inputs": ["base64"], "outputs": ["binary","text","html","javascript"]},
+  "base64_encoder": {"name": "Base64 Encoder", "cat": "encoder", "icon": "b64", "desc": "Encodes binary/text to Base64.", "inputs": ["text","binary","html","javascript","svg"], "outputs": ["base64"]},
+  "js_executor": {"name": "JS Executor", "cat": "exploit", "icon": "JS!", "desc": "Executes JavaScript in browser or Node context.", "inputs": ["javascript","html","data_url"], "outputs": ["exploit"]},
+  "iso_timestamp": {"name": "ISO Timestamp", "cat": "data", "icon": "T", "desc": "Generates/parses ISO 8601 datetime strings.", "inputs": ["text"], "outputs": ["timestamp"]},
+  "mime_encoder": {"name": "MIME Encoder", "cat": "encoder", "icon": "MIME", "desc": "RFC 2047/2231 encoded-word generation.", "inputs": ["text","timestamp"], "outputs": ["mime_encoded"]},
+  "mime_decoder": {"name": "MIME Decoder", "cat": "encoder", "icon": "mime", "desc": "Decodes RFC 2047 encoded-words.", "inputs": ["mime_encoded"], "outputs": ["text","timestamp"]},
+  "json_parser": {"name": "JSON Parser", "cat": "format", "icon": "{ }", "desc": "Parses JSON strings into objects.", "inputs": ["text"], "outputs": ["json_obj"]},
+  "json_encoder": {"name": "JSON Encoder", "cat": "format", "icon": "{;}", "desc": "Serializes objects to JSON strings.", "inputs": ["json_obj"], "outputs": ["text"]},
+  "command_injector": {"name": "Command Injector", "cat": "exploit", "icon": "CMD", "desc": "Injects shell commands via parameter smuggling.", "inputs": ["text","json_obj","sql"], "outputs": ["command"]},
+  "unicode_normalizer": {"name": "Unicode Normalizer", "cat": "format", "icon": "U+", "desc": "NFC/NFD/NFKC/NFKD normalization.", "inputs": ["text","unicode"], "outputs": ["unicode","zwj"]},
+  "zwj_sequence": {"name": "ZWJ Sequence", "cat": "format", "icon": "ZWJ", "desc": "Zero-Width Joiner sequence builder.", "inputs": ["unicode","text"], "outputs": ["zwj","text"]},
+  "template_injector": {"name": "Template Injector", "cat": "exploit", "icon": "{{", "desc": "Server-side template injection (SSTI).", "inputs": ["text","zwj","unicode"], "outputs": ["command","javascript"]},
+  "shebang_parser": {"name": "Shebang Parser", "cat": "format", "icon": "#!", "desc": "Parses interpreter directives.", "inputs": ["text"], "outputs": ["shebang"]},
+  "dockerfile_parser": {"name": "Dockerfile Parser", "cat": "container", "icon": "DKR", "desc": "Parses Dockerfile instructions.", "inputs": ["text","shebang"], "outputs": ["dockerfile"]},
+  "container_escaper": {"name": "Container Escaper", "cat": "exploit", "icon": "ESC", "desc": "Privileged container escape techniques.", "inputs": ["dockerfile","command"], "outputs": ["exploit"]},
+  "latex_parser": {"name": "LaTeX Parser", "cat": "format", "icon": "TeX", "desc": "Parses LaTeX/TikZ environments.", "inputs": ["text"], "outputs": ["latex_ast"]},
+  "svg_embedder": {"name": "SVG Embedder", "cat": "format", "icon": "SVG", "desc": "Embeds SVG via data URL or direct inclusion.", "inputs": ["svg","data_url","base64"], "outputs": ["html","latex_ast"]},
+  "svg_parser": {"name": "SVG Parser", "cat": "format", "icon": "<>", "desc": "Parses SVG DOM including embedded scripts.", "inputs": ["svg","data_url"], "outputs": ["javascript","html"]},
+  "jwt_parser": {"name": "JWT Parser", "cat": "crypto", "icon": "JWT", "desc": "Parses JWT header and payload (Base64URL).", "inputs": ["text"], "outputs": ["jwt_claims"]},
+  "jwt_forger": {"name": "JWT Forger", "cat": "crypto", "icon": "jWt", "desc": "Creates JWT with alg:none or key confusion.", "inputs": ["jwt_claims","json_obj"], "outputs": ["text"]},
+  "sql_parser": {"name": "SQL Parser", "cat": "format", "icon": "SQL", "desc": "Parses SQL queries for injection points.", "inputs": ["text"], "outputs": ["sql"]},
+  "sql_injector": {"name": "SQL Injector", "cat": "exploit", "icon": "'OR", "desc": "Constructs SQL injection payloads.", "inputs": ["sql","text","json_obj"], "outputs": ["exploit"]},
+  "homograph_generator": {"name": "Homograph Gen", "cat": "network", "icon": "HGM", "desc": "Generates visually spoofed domains using Cyrillic/Greek.", "inputs": ["text","unicode"], "outputs": ["idn","url"]},
+  "idn_encoder": {"name": "IDN Encoder", "cat": "network", "icon": "IDN", "desc": "Punycode encoding for internationalized domains.", "inputs": ["idn","text"], "outputs": ["url","text"]},
+  "phishing_builder": {"name": "Phishing Builder", "cat": "exploit", "icon": "PHS", "desc": "Constructs credential harvesting pages.", "inputs": ["url","idn","html"], "outputs": ["exploit"]},
+  "qr_decoder": {"name": "QR Decoder", "cat": "data", "icon": "QR", "desc": "Decodes QR code payload strings.", "inputs": ["text"], "outputs": ["qr_data","base64"]},
+  "pickle_decoder": {"name": "Pickle Decoder", "cat": "data", "icon": "PCK", "desc": "Deserializes Python pickle streams.", "inputs": ["binary","base64"], "outputs": ["python_obj","command"]},
+  "rce_trigger": {"name": "RCE Trigger", "cat": "exploit", "icon": "RCE", "desc": "Remote code execution via deserialization.", "inputs": ["python_obj","command","pickle"], "outputs": ["exploit"]},
+  "image_loader": {"name": "Image Loader", "cat": "data", "icon": "IMG", "desc": "Loads image pixel data (RGB/RGBA).", "inputs": ["binary","text"], "outputs": ["image_pixels"]},
+  "lsb_extractor": {"name": "LSB Extractor", "cat": "data", "icon": "LSB", "desc": "Extracts least-significant bits from pixels.", "inputs": ["image_pixels"], "outputs": ["binary","text"]},
+  "stego_encoder": {"name": "Stego Encoder", "cat": "data", "icon": "STG", "desc": "Embeds payloads in image LSB channels.", "inputs": ["image_pixels","binary","text"], "outputs": ["image_pixels"]},
+  "shellcode_builder": {"name": "Shellcode Builder", "cat": "exploit", "icon": "SC", "desc": "Constructs executable shellcode from binary.", "inputs": ["binary","text"], "outputs": ["exploit"]},
+  "yaml_parser": {"name": "YAML Parser", "cat": "format", "icon": "YML", "desc": "Parses YAML into objects. Vulnerable to deserialization.", "inputs": ["text"], "outputs": ["json_obj","command"]},
+  "ini_parser": {"name": "INI Parser", "cat": "format", "icon": "INI", "desc": "Parses INI configuration sections.", "inputs": ["text"], "outputs": ["json_obj"]},
+  "hash_verifier": {"name": "Hash Verifier", "cat": "crypto", "icon": "HSH", "desc": "Verifies bcrypt/argon2/sha256 hashes.", "inputs": ["text"], "outputs": ["boolean"]},
+  "pem_parser": {"name": "PEM Parser", "cat": "crypto", "icon": "PEM", "desc": "Parses PEM-encoded certificates and keys.", "inputs": ["text"], "outputs": ["certificate","private_key"]},
+  "ssh_key_parser": {"name": "SSH Key Parser", "cat": "crypto", "icon": "SSH", "desc": "Parses ssh-rsa / ssh-ed25519 public keys.", "inputs": ["text"], "outputs": ["ssh_key"]},
+  "git_diff_parser": {"name": "Git Diff Parser", "cat": "vcs", "icon": "GIT", "desc": "Parses unified diff format for patch application.", "inputs": ["text"], "outputs": ["patch"]},
+  "patch_applier": {"name": "Patch Applier", "cat": "vcs", "icon": "PTC", "desc": "Applies unified diff patches to file systems.", "inputs": ["patch","text"], "outputs": ["text","command"]},
+  "makefile_parser": {"name": "Makefile Parser", "cat": "build", "icon": "MKF", "desc": "Parses Makefile rules and recipes.", "inputs": ["text"], "outputs": ["command"]},
+  "package_json_parser": {"name": "Package.json Parser", "cat": "build", "icon": "NPM", "desc": "Parses npm package manifests.", "inputs": ["text"], "outputs": ["json_obj","command"]},
+  "docker_compose_parser": {"name": "Compose Parser", "cat": "container", "icon": "CMP", "desc": "Parses docker-compose.yml for service orchestration.", "inputs": ["text"], "outputs": ["dockerfile","command"]},
+  "kubectl_parser": {"name": "Kubectl Parser", "cat": "container", "icon": "K8S", "desc": "Parses Kubernetes manifest YAML.", "inputs": ["text"], "outputs": ["k8s_manifest","command"]},
+  "protobuf_parser": {"name": "Protobuf Parser", "cat": "format", "icon": "PB", "desc": "Deserializes Protocol Buffers messages.", "inputs": ["binary"], "outputs": ["json_obj","command"]},
+  "http_parser": {"name": "HTTP Parser", "cat": "network", "icon": "HTTP", "desc": "Parses HTTP requests/responses for smuggling.", "inputs": ["text","binary"], "outputs": ["http_obj","command"]},
+  "hpack_decoder": {"name": "HPACK Decoder", "cat": "network", "icon": "HP2", "desc": "Decodes HTTP/2 HPACK header compression.", "inputs": ["binary"], "outputs": ["http_obj","text"]},
+  "pdf_parser": {"name": "PDF Parser", "cat": "format", "icon": "PDF", "desc": "Parses PDF structure including JS actions.", "inputs": ["binary","text"], "outputs": ["javascript","command"]},
+  "wasm_parser": {"name": "WASM Parser", "cat": "format", "icon": "WASM", "desc": "Parses WebAssembly binary format.", "inputs": ["binary"], "outputs": ["javascript","command"]},
+  "dns_txt_parser": {"name": "DNS TXT Parser", "cat": "network", "icon": "DNS", "desc": "Parses DNS TXT records for payload delivery.", "inputs": ["text"], "outputs": ["base64","command"]},
+  "polyglot_builder": {"name": "Polyglot Builder", "cat": "exploit", "icon": "PLG", "desc": "Constructs polyglot files (SVG+JS+PDF, etc).", "inputs": ["html","javascript","svg","pdf","text"], "outputs": ["exploit"]}
+};
+
+var FALLBACK_CATEGORIES = {
+  "format": {"label": "Format Parser", "color": "#00ff41"},
+  "encoder": {"label": "Encoder", "color": "#00aaff"},
+  "network": {"label": "Network", "color": "#ffaa00"},
+  "crypto": {"label": "Crypto", "color": "#ff00ff"},
+  "container": {"label": "Container", "color": "#00ffff"},
+  "exploit": {"label": "Exploit", "color": "#ff0044"},
+  "data": {"label": "Data", "color": "#ffff00"},
+  "vcs": {"label": "Version Control", "color": "#aa66ff"},
+  "build": {"label": "Build System", "color": "#ff8800"},
+  "doc": {"label": "Documentation", "color": "#66ffaa"},
+  "test": {"label": "Testing", "color": "#ff66aa"}
+};
+
+var FALLBACK_PRESETS = [
+  {"name": "Chain 1: Markdown->Code->Exec", "nodes": ["markdown_parser","code_extractor","template_engine"]},
+  {"name": "Chain 2: URL->Base64->JS", "nodes": ["data_url_builder","base64_decoder","js_executor"]},
+  {"name": "Chain 3: Timestamp->MIME->JSON->Cmd", "nodes": ["iso_timestamp","mime_encoder","json_parser","command_injector"]},
+  {"name": "Chain 4: Emoji->Unicode->ZWJ->SSTI", "nodes": ["unicode_normalizer","zwj_sequence","template_injector"]},
+  {"name": "Chain 5: Shebang->Docker->Escape", "nodes": ["shebang_parser","dockerfile_parser","container_escaper"]},
+  {"name": "Chain 6: LaTeX->TikZ->SVG->JS", "nodes": ["latex_parser","svg_embedder","svg_parser","js_executor"]},
+  {"name": "Chain 7: JWT->JSON->SQL->Inj", "nodes": ["jwt_parser","jwt_forger","sql_parser","sql_injector"]},
+  {"name": "Chain 8: Unicode->Homograph->IDN", "nodes": ["unicode_normalizer","homograph_generator","idn_encoder","phishing_builder"]},
+  {"name": "Chain 9: QR->Base64->Pickle->RCE", "nodes": ["qr_decoder","base64_decoder","pickle_decoder","rce_trigger"]},
+  {"name": "Chain 10: Neural->LSB->Stego->SC", "nodes": ["image_loader","lsb_extractor","stego_encoder","shellcode_builder"]}
+];
+
+function useFallbackData() {
+  nodeDefs = FALLBACK_NODE_DEFS;
+  categories = FALLBACK_CATEGORIES;
+  presets = FALLBACK_PRESETS;
+  log("Using embedded JS fallback data. " + Object.keys(nodeDefs).length + " nodes.", "warn");
+}
+
+function log(msg, type) {
+  type = type || "info";
+  var body = document.getElementById("console-body");
+  var line = document.createElement("div");
+  line.className = "console-line " + type;
+  var time = new Date().toLocaleTimeString("en-US", {hour12:false});
+  line.textContent = "[" + time + "] " + msg;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById("console-body").innerHTML = "";
+}
+
+function setStatus(text, cls) {
+  document.getElementById("py-status-text").textContent = text;
+  var dot = document.getElementById("py-status-dot");
+  dot.className = "status-dot" + (cls ? " " + cls : "");
+}
+
+function setChainStatus(text, cls) {
+  var el = document.getElementById("chain-status");
+  el.className = "chain-status " + (cls || "neutral");
+  el.textContent = text;
+}
+
+function b64Decode(str) {
+  var binary = atob(str);
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+async function initPyodide() {
+  var pyodideLoaded = false;
+  try {
+    if (typeof loadPyodide === "undefined") {
+      throw new Error("loadPyodide not available - CDN may be blocked");
+    }
+    pyodide = await loadPyodide();
+    setStatus("PYODIDE: LOADING PKG...", "");
+    await pyodide.loadPackage("micropip");
+
+    var pyCode = b64Decode(PY_MODULE_B64);
+    await pyodide.runPythonAsync(pyCode);
+
+    nodeDefs = JSON.parse(pyodide.runPython("get_node_defs()"));
+    categories = JSON.parse(pyodide.runPython("get_categories()"));
+    presets = JSON.parse(pyodide.runPython("get_presets()"));
+
+    pyodideReady = true;
+    pyodideLoaded = true;
+    setStatus("PYODIDE: READY", "active");
+    log("Pyodide WASM backend loaded. " + Object.keys(nodeDefs).length + " nodes available.", "success");
+  } catch(e) {
+    log("Pyodide init failed: " + e.message, "error");
+    setStatus("PYODIDE: FALLBACK", "warn");
+    useFallbackData();
+  }
+
+  buildPalette();
+  buildPresets();
+  buildEncyclopedia();
+  setupCanvasEvents();
+  setChainStatus("Drag nodes from palette. Click output port, then input port to connect.", "neutral");
+  document.getElementById("palette-count").textContent = Object.keys(nodeDefs).length + " nodes";
+}
+
+function buildPalette() {
+  var scroll = document.getElementById("palette-scroll");
+  scroll.innerHTML = "";
+  var byCat = {};
+  for (var id in nodeDefs) {
+    var def = nodeDefs[id];
+    if (!byCat[def.cat]) byCat[def.cat] = [];
+    byCat[def.cat].push({id: id, def: def});
+  }
+  for (var cat in byCat) {
+    var catDiv = document.createElement("div");
+    catDiv.className = "palette-cat";
+    var info = categories[cat] || {label: cat, color: "#888"};
+    var title = document.createElement("div");
+    title.className = "palette-cat-title";
+    title.style.borderColor = info.color;
+    title.textContent = info.label;
+    catDiv.appendChild(title);
+
+    var items = byCat[cat];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var node = document.createElement("div");
+      node.className = "palette-node";
+      node.id = "palette-" + item.id;
+      node.draggable = true;
+      node.dataset.nodeId = item.id;
+      var icon = document.createElement("span");
+      icon.className = "icon";
+      icon.style.background = info.color + "22";
+      icon.style.color = info.color;
+      icon.textContent = item.def.icon;
+      var name = document.createElement("span");
+      name.textContent = item.def.name;
+      var badge = document.createElement("span");
+      badge.className = "compat-badge";
+      node.appendChild(icon);
+      node.appendChild(name);
+      node.appendChild(badge);
+      node.addEventListener("dragstart", function(e) {
+        e.dataTransfer.setData("nodeType", this.dataset.nodeId);
+      });
+      node.addEventListener("mouseenter", function() {
+        previewPaletteNode(this.dataset.nodeId);
+      });
+      node.addEventListener("mouseleave", function() {
+        clearPalettePreview();
+      });
+      catDiv.appendChild(node);
+    }
+    scroll.appendChild(catDiv);
+  }
+}
+
+function previewPaletteNode(typeId) {
+  if (!selectedNodeId) return;
+  var selected = null;
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === selectedNodeId) { selected = nodes[i]; break; }
+  }
+  if (!selected) return;
+  var def = nodeDefs[typeId];
+  if (!def) return;
+
+  var canConnect = false;
+  for (var i = 0; i < selected.def.outputs.length; i++) {
+    for (var j = 0; j < def.inputs.length; j++) {
+      if (selected.def.outputs[i] === def.inputs[j]) { canConnect = true; break; }
+    }
+    if (canConnect) break;
+  }
+
+  var el = document.getElementById("palette-" + typeId);
+  if (!el) return;
+  var badge = el.querySelector(".compat-badge");
+  if (canConnect) {
+    el.classList.add("compatible");
+    el.classList.remove("incompatible");
+    if (badge) badge.textContent = "MATCH";
+  } else {
+    el.classList.add("incompatible");
+    el.classList.remove("compatible");
+    if (badge) badge.textContent = "NO MATCH";
+  }
+}
+
+function clearPalettePreview() {
+  var all = document.querySelectorAll(".palette-node");
+  for (var i = 0; i < all.length; i++) {
+    all[i].classList.remove("compatible", "incompatible");
+  }
+}
+
+function buildPresets() {
+  var container = document.getElementById("preset-chains");
+  container.innerHTML = "";
+  for (var i = 0; i < presets.length; i++) {
+    var preset = presets[i];
+    var btn = document.createElement("button");
+    btn.className = "btn preset-btn";
+    var meta = document.createElement("span");
+    meta.className = "preset-meta";
+    meta.textContent = preset.nodes.length + " nodes";
+    btn.appendChild(document.createTextNode(preset.name));
+    btn.appendChild(meta);
+    btn.onclick = (function(idx) {
+      return function() { loadPreset(idx); };
+    })(i);
+    container.appendChild(btn);
+  }
+}
+
+function buildEncyclopedia() {
+  var container = document.getElementById("encyclo-content");
+  container.innerHTML = "";
+  for (var name in ENCYCLOPEDIA) {
+    var entry = ENCYCLOPEDIA[name];
+    var card = document.createElement("div");
+    card.className = "encyclo-card";
+    card.id = "encyclo-" + name.replace(/[^a-zA-Z0-9]/g, "-");
+
+    var sevClass = "severity-" + entry.severity;
+    var sevText = entry.severity === "crit" ? "CRITICAL" : entry.severity === "high" ? "HIGH" : entry.severity === "med" ? "MEDIUM" : "LOW";
+
+    var prereqHtml = "";
+    for (var i = 0; i < entry.prerequisites.length; i++) {
+      prereqHtml += (i > 0 ? ", " : "") + entry.prerequisites[i];
+    }
+
+    card.innerHTML = "" +
+      "<div class=\"encyclo-title\">" + name + "</div>" +
+      "<div class=\"encyclo-target\">TARGET: " + entry.target + "</div>" +
+      "<div class=\"encyclo-meta\">" +
+      "  <span class=\"tag " + sevClass + "\">" + sevText + "</span>" +
+      "  <span class=\"tag type-in\">" + entry.cve + "</span>" +
+      "</div>" +
+      "<div class=\"encyclo-desc\">" + entry.description + "</div>" +
+      "<div class=\"encyclo-desc\" style=\"border-left:2px solid var(--warning);padding-left:8px;\"><strong>WHY IT WORKS:</strong> " + entry.why + "</div>" +
+      "<div class=\"encyclo-prereq\"><span>PREREQUISITES:</span> " + prereqHtml + "</div>" +
+      "<div class=\"encyclo-mitigation\"><span>MITIGATION:</span> " + entry.mitigation + "</div>";
+
+    container.appendChild(card);
+  }
+}
+
+function toggleEncyclopedia() {
+  encyclopediaVisible = !encyclopediaVisible;
+  var section = document.getElementById("encyclo-section");
+  section.style.display = encyclopediaVisible ? "block" : "none";
+  log("Encyclopedia " + (encyclopediaVisible ? "shown" : "hidden"), "info");
+}
+
+function showEncyclopediaEntry(presetName) {
+  var id = "encyclo-" + presetName.replace(/[^a-zA-Z0-9]/g, "-");
+  var all = document.querySelectorAll(".encyclo-card");
+  for (var i = 0; i < all.length; i++) all[i].classList.remove("active");
+  var card = document.getElementById(id);
+  if (card) {
+    card.classList.add("active");
+    encyclopediaVisible = true;
+    document.getElementById("encyclo-section").style.display = "block";
+    card.scrollIntoView({behavior: "smooth", block: "center"});
+  }
+}
+
+function createNode(typeId, x, y) {
+  var def = nodeDefs[typeId];
+  if (!def) return null;
+  var node = {
+    id: nextNodeId++,
+    typeId: typeId,
+    x: x, y: y,
+    def: def
+  };
+  nodes.push(node);
+  renderNode(node);
+  log("Created node: " + def.name + " (#" + node.id + ")", "info");
+  return node;
+}
+
+function renderNode(node) {
+  var container = document.getElementById("nodes-container");
+  var el = document.createElement("div");
+  el.className = "node";
+  el.id = "node-" + node.id;
+  el.style.left = node.x + "px";
+  el.style.top = node.y + "px";
+  var catInfo = categories[node.def.cat] || {color: "#888"};
+
+  var inputsHtml = "";
+  for (var i = 0; i < node.def.inputs.length; i++) {
+    var inp = node.def.inputs[i];
+    inputsHtml += "<div class=\"port input\" data-port=\"in-" + i + "\" data-type=\"" + inp + "\" title=\"" + inp + "\"><span class=\"port-label\">" + inp + "</span></div>";
+  }
+  var outputsHtml = "";
+  for (var i = 0; i < node.def.outputs.length; i++) {
+    var out = node.def.outputs[i];
+    outputsHtml += "<div class=\"port output\" data-port=\"out-" + i + "\" data-type=\"" + out + "\" title=\"" + out + "\"><span class=\"port-label\">" + out + "</span></div>";
+  }
+
+  el.innerHTML = "" +
+    "<div class=\"node-delete\" onclick=\"deleteNode(" + node.id + ");event.stopPropagation();\">&times;</div>" +
+    "<div class=\"node-header\" style=\"color:" + catInfo.color + "\">" +
+    "  <span>" + node.def.icon + " " + node.def.name + "</span>" +
+    "  <span style=\"font-size:8px;opacity:0.5\">#" + node.id + "</span>" +
+    "</div>" +
+    "<div class=\"node-body\">" + node.def.desc + "</div>" +
+    "<div class=\"node-ports\" style=\"padding:0 8px 4px;\">" +
+    "  <div style=\"display:flex;gap:4px;\">" + inputsHtml + "</div>" +
+    "  <div style=\"display:flex;gap:4px;\">" + outputsHtml + "</div>" +
+    "</div>";
+
+  el.addEventListener("mousedown", function(e) { startDragNode(e, node); });
+  el.addEventListener("click", function(e) { selectNode(node); });
+  el.addEventListener("mouseenter", function() { highlightChainPath(node.id); });
+  el.addEventListener("mouseleave", function() { clearChainHighlight(); });
+
+  var ports = el.querySelectorAll(".port");
+  for (var i = 0; i < ports.length; i++) {
+    (function(port) {
+      port.addEventListener("mousedown", function(e) {
+        e.stopPropagation();
+        handlePortClick(e, node, port);
+      });
+    })(ports[i]);
+  }
+
+  container.appendChild(el);
+}
+
+function deleteNode(id) {
+  connections = connections.filter(function(c) { return c.from !== id && c.to !== id; });
+  nodes = nodes.filter(function(n) { return n.id !== id; });
+  var el = document.getElementById("node-" + id);
+  if (el) el.remove();
+  redrawConnections();
+  if (selectedNodeId === id) {
+    selectedNodeId = null;
+    updateInspector();
+    updateFlowViz();
+    updateHelper();
+  }
+  updateChainCount();
+  log("Deleted node #" + id, "warn");
+}
+
+function selectNode(node) {
+  var all = document.querySelectorAll(".node");
+  for (var i = 0; i < all.length; i++) all[i].classList.remove("selected");
+  var el = document.getElementById("node-" + node.id);
+  if (el) el.classList.add("selected");
+  selectedNodeId = node.id;
+  updateInspector();
+  updateFlowViz();
+  updateHelper();
+}
+
+function highlightChainPath(nodeId) {
+  var pathNodes = new Set();
+  var pathConns = new Set();
+
+  function forward(nid) {
+    pathNodes.add(nid);
+    for (var i = 0; i < connections.length; i++) {
+      if (connections[i].from === nid) {
+        pathConns.add(i);
+        forward(connections[i].to);
+      }
+    }
+  }
+  function backward(nid) {
+    pathNodes.add(nid);
+    for (var i = 0; i < connections.length; i++) {
+      if (connections[i].to === nid) {
+        pathConns.add(i);
+        backward(connections[i].from);
+      }
+    }
+  }
+
+  forward(nodeId);
+  backward(nodeId);
+
+  for (var i = 0; i < nodes.length; i++) {
+    var el = document.getElementById("node-" + nodes[i].id);
+    if (el) {
+      if (pathNodes.has(nodes[i].id) && nodes[i].id !== nodeId) {
+        el.classList.add("highlighted");
+      } else {
+        el.classList.remove("highlighted");
+      }
+    }
+  }
+
+  redrawConnections();
+  var svg = document.getElementById("graph-svg");
+  var lines = svg.querySelectorAll(".connection");
+  for (var i = 0; i < lines.length; i++) {
+    if (pathConns.has(i)) {
+      lines[i].classList.add("highlight");
+    }
+  }
+}
+
+function clearChainHighlight() {
+  var all = document.querySelectorAll(".node");
+  for (var i = 0; i < all.length; i++) all[i].classList.remove("highlighted");
+  redrawConnections();
+}
+
+function updateFlowViz() {
+  var section = document.getElementById("flow-section");
+  var viz = document.getElementById("flow-viz");
+  if (!selectedNodeId) {
+    section.style.display = "none";
+    return;
+  }
+
+  var chains = findChainsForNode(selectedNodeId);
+  if (chains.length === 0) {
+    section.style.display = "none";
+    return;
+  }
+
+  section.style.display = "block";
+  var chain = chains[0];
+  var html = "<div class=\"flow-track\">";
+
+  for (var i = 0; i < chain.nodes.length; i++) {
+    var n = chain.nodes[i];
+    var isStart = (i === 0);
+    var isEnd = (i === chain.nodes.length - 1);
+    var isSelected = (n.id === selectedNodeId);
+    var boxClass = "flow-step-box";
+    if (isStart) boxClass += " start";
+    if (isEnd) boxClass += " end";
+    if (isSelected) boxClass += " highlight";
+
+    html += "<div class=\"flow-step\">";
+    html += "<div class=\"flow-step-type\">" + (isStart ? "START" : isEnd ? "END" : "STEP " + (i+1)) + "</div>";
+    html += "<div class=\"" + boxClass + "\">" + n.def.name + "</div>";
+    html += "<div class=\"flow-step-type\">" + n.def.icon + "</div>";
+    html += "</div>";
+
+    if (i < chain.nodes.length - 1) {
+      var conn = chain.connections[i];
+      var arrowClass = "flow-arrow" + (conn.valid ? " valid" : " invalid");
+      html += "<div class=\"" + arrowClass + "\">&#8594;</div>";
+    }
+  }
+  html += "</div>";
+  viz.innerHTML = html;
+}
+
+function findChainsForNode(nodeId) {
+  var result = [];
+  var incoming = new Set();
+  var outgoing = new Set();
+  for (var i = 0; i < connections.length; i++) {
+    incoming.add(connections[i].to);
+    outgoing.add(connections[i].from);
+  }
+
+  var starts = [];
+  for (var i = 0; i < nodes.length; i++) {
+    if (!incoming.has(nodes[i].id)) starts.push(nodes[i]);
+  }
+
+  function dfs(nid, path, conns) {
+    var nxt = [];
+    for (var i = 0; i < connections.length; i++) {
+      if (connections[i].from === nid) nxt.push({conn: connections[i], idx: i});
+    }
+    if (nxt.length === 0) {
+      var hasNode = false;
+      for (var i = 0; i < path.length; i++) {
+        if (path[i].id === nodeId) { hasNode = true; break; }
+      }
+      if (hasNode && path.length > 1) {
+        result.push({nodes: path.slice(), connections: conns.slice()});
+      }
+      return;
+    }
+    for (var i = 0; i < nxt.length; i++) {
+      var n = null;
+      for (var j = 0; j < nodes.length; j++) {
+        if (nodes[j].id === nxt[i].conn.to) { n = nodes[j]; break; }
+      }
+      if (n) dfs(nxt[i].conn.to, path.concat([n]), conns.concat([nxt[i].conn]));
+    }
+  }
+
+  for (var i = 0; i < starts.length; i++) {
+    dfs(starts[i].id, [starts[i]], []);
+  }
+  return result;
+}
+
+function updateHelper() {
+  var section = document.getElementById("helper-section");
+  var content = document.getElementById("helper-content");
+  if (!selectedNodeId) {
+    section.style.display = "none";
+    return;
+  }
+
+  var node = null;
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === selectedNodeId) { node = nodes[i]; break; }
+  }
+  if (!node) {
+    section.style.display = "none";
+    return;
+  }
+
+  section.style.display = "block";
+  var html = "";
+
+  html += "<div class=\"helper-card\">";
+  html += "<div class=\"helper-title\">THIS NODE PRODUCES</div>";
+  html += "<div class=\"helper-sub\">Outputs that can feed the next reflex:</div>";
+  for (var i = 0; i < node.def.outputs.length; i++) {
+    html += "<span class=\"tag type-out\">" + node.def.outputs[i] + "</span>";
+  }
+  html += "</div>";
+
+  var connectedInputs = {};
+  for (var i = 0; i < connections.length; i++) {
+    if (connections[i].to === node.id) {
+      connectedInputs[connections[i].toType] = true;
+    }
+  }
+  html += "<div class=\"helper-card\">";
+  html += "<div class=\"helper-title\">INPUT STATUS</div>";
+  for (var i = 0; i < node.def.inputs.length; i++) {
+    var inp = node.def.inputs[i];
+    var status = connectedInputs[inp] ? "CONNECTED" : "NEEDED";
+    var color = connectedInputs[inp] ? "var(--success)" : "var(--warning)";
+    html += "<div class=\"inspector-row\"><span class=\"label\">" + inp + "</span><span class=\"value\" style=\"color:" + color + "\">" + status + "</span></div>";
+  }
+  html += "</div>";
+
+  html += "<div class=\"helper-card\">";
+  html += "<div class=\"helper-title\">RECOMMENDED NEXT NODES</div>";
+  html += "<div class=\"helper-sub\">Click to add to canvas (auto-positioned):</div>";
+
+  var recs = [];
+  for (var id in nodeDefs) {
+    if (id === node.typeId) continue;
+    var def = nodeDefs[id];
+    var matches = [];
+    for (var i = 0; i < node.def.outputs.length; i++) {
+      for (var j = 0; j < def.inputs.length; j++) {
+        if (node.def.outputs[i] === def.inputs[j]) {
+          matches.push(node.def.outputs[i]);
+        }
+      }
+    }
+    if (matches.length > 0) {
+      recs.push({id: id, def: def, matches: matches});
+    }
+  }
+
+  recs.sort(function(a, b) {
+    var aExploit = a.def.cat === "exploit" ? 1 : 0;
+    var bExploit = b.def.cat === "exploit" ? 1 : 0;
+    if (aExploit !== bExploit) return bExploit - aExploit;
+    return b.matches.length - a.matches.length;
+  });
+
+  for (var i = 0; i < Math.min(recs.length, 8); i++) {
+    var rec = recs[i];
+    var catInfo = categories[rec.def.cat] || {color: "#888", label: rec.def.cat};
+    var isExploit = rec.def.cat === "exploit";
+    var why = isExploit ? "Leads to exploit" : "Consumes " + rec.matches.join(", ");
+
+    html += "<div class=\"helper-rec compatible\" onclick=\"addRecommendedNode('" + rec.id + "', " + node.id + ")\">";
+    html += "<span class=\"rec-icon\" style=\"background:" + catInfo.color + "22;color:" + catInfo.color + "\">" + rec.def.icon + "</span>";
+    html += "<span>" + rec.def.name + "</span>";
+    html += "<span class=\"rec-why\">" + why + "</span>";
+    html += "</div>";
+  }
+
+  if (recs.length === 0) {
+    html += "<div style=\"font-size:9px;color:var(--text-dim);font-style:italic\">No compatible nodes found. This may be a terminal node.</div>";
+  }
+  html += "</div>";
+
+  var chainInfo = getChainContext(node);
+  if (chainInfo) {
+    html += "<div class=\"helper-card\">";
+    html += "<div class=\"helper-title\">CHAIN CONTEXT</div>";
+    html += "<div class=\"helper-sub\">" + chainInfo + "</div>";
+    html += "</div>";
+  }
+
+  content.innerHTML = html;
+}
+
+function addRecommendedNode(typeId, afterNodeId) {
+  var afterNode = null;
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === afterNodeId) { afterNode = nodes[i]; break; }
+  }
+  if (!afterNode) return;
+
+  var newNode = createNode(typeId, afterNode.x + 180, afterNode.y);
+  if (!newNode) return;
+
+  for (var i = 0; i < afterNode.def.outputs.length; i++) {
+    for (var j = 0; j < newNode.def.inputs.length; j++) {
+      if (afterNode.def.outputs[i] === newNode.def.inputs[j]) {
+        connections.push({
+          from: afterNode.id,
+          to: newNode.id,
+          fromType: afterNode.def.outputs[i],
+          toType: newNode.def.inputs[j],
+          valid: true
+        });
+        break;
+      }
+    }
+  }
+
+  redrawConnections();
+  selectNode(newNode);
+  validateAll();
+  log("Added recommended node: " + newNode.def.name, "success");
+}
+
+function getChainContext(node) {
+  for (var i = 0; i < presets.length; i++) {
+    var preset = presets[i];
+    var idx = -1;
+    for (var j = 0; j < preset.nodes.length; j++) {
+      if (preset.nodes[j] === node.typeId) { idx = j; break; }
+    }
+    if (idx >= 0) {
+      var pos = idx === 0 ? "entry point" : idx === preset.nodes.length - 1 ? "terminal exploit" : "intermediate transformer";
+      var entry = ENCYCLOPEDIA[preset.name];
+      if (entry) {
+        return 'Part of "' + preset.name + '". This node is the ' + pos + '. Target: ' + entry.target + '. Severity: ' + entry.severity.toUpperCase() + '.';
+      }
+      return 'Part of "' + preset.name + '". This node is the ' + pos + '.';
+    }
+  }
+  return null;
+}
+
+function updateInspector() {
+  var details = document.getElementById("node-details");
+  if (!selectedNodeId) {
+    details.innerHTML = "<span style=\"color:var(--text-dim);font-style:italic;\">Click a node to view details.</span>";
+    document.getElementById("flow-section").style.display = "none";
+    document.getElementById("helper-section").style.display = "none";
+    return;
+  }
+
+  var node = null;
+  for (var i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === selectedNodeId) { node = nodes[i]; break; }
+  }
+  if (!node) {
+    details.innerHTML = "<span style=\"color:var(--text-dim);font-style:italic;\">Node not found.</span>";
+    return;
+  }
+
+  var catInfo = categories[node.def.cat] || {label: node.def.cat, color: "#888"};
+  var inputsTags = "";
+  for (var i = 0; i < node.def.inputs.length; i++) {
+    inputsTags += "<span class=\"tag type-in\">" + node.def.inputs[i] + "</span>";
+  }
+  var outputsTags = "";
+  for (var i = 0; i < node.def.outputs.length; i++) {
+    outputsTags += "<span class=\"tag type-out\">" + node.def.outputs[i] + "</span>";
+  }
+
+  var html = "" +
+    "<div class=\"inspector-row\"><span class=\"label\">ID</span><span class=\"value\">#" + node.id + "</span></div>" +
+    "<div class=\"inspector-row\"><span class=\"label\">Type</span><span class=\"value\">" + node.def.name + "</span></div>" +
+    "<div class=\"inspector-row\"><span class=\"label\">Category</span><span class=\"value\" style=\"color:" + catInfo.color + "\">" + catInfo.label + "</span></div>" +
+    "<div class=\"inspector-row\"><span class=\"label\">Position</span><span class=\"value\">" + Math.round(node.x) + ", " + Math.round(node.y) + "</span></div>" +
+    "<div class=\"inspector-section-title\" style=\"margin-top:8px;\">Inputs</div>" +
+    "<div>" + inputsTags + "</div>" +
+    "<div class=\"inspector-section-title\" style=\"margin-top:8px;\">Outputs</div>" +
+    "<div>" + outputsTags + "</div>" +
+    "<div class=\"inspector-section-title\" style=\"margin-top:8px;\">Description</div>" +
+    "<div style=\"font-size:10px;color:var(--text-fg);opacity:0.8;line-height:1.4;\">" + node.def.desc + "</div>";
+
+  details.innerHTML = html;
+}
+
+function setupCanvasEvents() {
+  var canvas = document.getElementById("canvas-wrap");
+
+  canvas.addEventListener("dragover", function(e) { e.preventDefault(); });
+  canvas.addEventListener("drop", function(e) {
+    e.preventDefault();
+    var typeId = e.dataTransfer.getData("nodeType");
+    if (typeId && nodeDefs[typeId]) {
+      var rect = canvas.getBoundingClientRect();
+      createNode(typeId, e.clientX - rect.left - 80, e.clientY - rect.top - 20);
+    }
+  });
+
+  document.addEventListener("mousemove", function(e) {
+    if (draggingNode) {
+      var c = document.getElementById("canvas-wrap");
+      var rect = c.getBoundingClientRect();
+      draggingNode.x = e.clientX - rect.left - dragOffset.x;
+      draggingNode.y = e.clientY - rect.top - dragOffset.y;
+      var el = document.getElementById("node-" + draggingNode.id);
+      if (el) {
+        el.style.left = draggingNode.x + "px";
+        el.style.top = draggingNode.y + "px";
+      }
+      redrawConnections();
+    }
+    if (connectingFrom) {
+      redrawConnections();
+      drawTempConnection(e);
+    }
+  });
+
+  document.addEventListener("mouseup", function() {
+    if (draggingNode) {
+      var el = document.getElementById("node-" + draggingNode.id);
+      if (el) el.classList.remove("dragging");
+      draggingNode = null;
+    }
+    if (connectingFrom) {
+      connectingFrom.portEl.classList.remove("connected");
+      connectingFrom = null;
+      redrawConnections();
+    }
+  });
+
+  canvas.addEventListener("mousedown", function(e) {
+    if (e.target === canvas || e.target.classList.contains("canvas-grid")) {
+      var all = document.querySelectorAll(".node");
+      for (var i = 0; i < all.length; i++) all[i].classList.remove("selected");
+      selectedNodeId = null;
+      updateInspector();
+      updateFlowViz();
+      updateHelper();
+      clearPalettePreview();
+    }
+  });
+}
+
+function startDragNode(e, node) {
+  if (e.target.classList.contains("port") || e.target.classList.contains("node-delete")) return;
+  draggingNode = node;
+  var el = document.getElementById("node-" + node.id);
+  el.classList.add("dragging");
+  var rect = el.getBoundingClientRect();
+  dragOffset.x = e.clientX - rect.left;
+  dragOffset.y = e.clientY - rect.top;
+}
+
+function handlePortClick(e, node, portEl) {
+  var isOutput = portEl.classList.contains("output");
+
+  if (!connectingFrom) {
+    if (isOutput) {
+      connectingFrom = { node: node, portEl: portEl, type: portEl.dataset.type };
+      portEl.classList.add("connected");
+      log("Started connection from " + node.def.name + " [" + portEl.dataset.type + "]", "info");
+    }
+  } else {
+    if (!isOutput && connectingFrom.node.id !== node.id) {
+      var fromType = connectingFrom.type;
+      var toType = portEl.dataset.type;
+      var isValid = fromType === toType;
+
+      var exists = connections.some(function(c) {
+        return c.from === connectingFrom.node.id && c.to === node.id;
+      });
+
+      if (!exists) {
+        connections.push({
+          from: connectingFrom.node.id,
+          to: node.id,
+          fromType: fromType,
+          toType: toType,
+          valid: isValid
+        });
+        log("Connected: " + connectingFrom.node.def.name + " -> " + node.def.name + " [" + (isValid ? "VALID" : "INVALID") + "]", isValid ? "success" : "error");
+      }
+
+      connectingFrom.portEl.classList.remove("connected");
+      connectingFrom = null;
+      redrawConnections();
+      updateInspector();
+      updateFlowViz();
+      updateHelper();
+      updateChainCount();
+    } else {
+      connectingFrom.portEl.classList.remove("connected");
+      connectingFrom = null;
+      redrawConnections();
+    }
+  }
+}
+
+function getPortCenter(nodeId, isInput, type) {
+  var el = document.getElementById("node-" + nodeId);
+  if (!el) return {x:0, y:0};
+  var sel = ".port." + (isInput ? "input" : "output") + "[data-type=\"" + type + "\"]";
+  var port = el.querySelector(sel);
+  if (!port) return {x:0, y:0};
+  var rect = port.getBoundingClientRect();
+  var canvas = document.getElementById("canvas-wrap").getBoundingClientRect();
+  return {
+    x: rect.left + rect.width/2 - canvas.left,
+    y: rect.top + rect.height/2 - canvas.top
+  };
+}
+
+function redrawConnections() {
+  var svg = document.getElementById("graph-svg");
+  svg.innerHTML = "";
+
+  for (var i = 0; i < connections.length; i++) {
+    var conn = connections[i];
+    var fromNode = null, toNode = null;
+    for (var j = 0; j < nodes.length; j++) {
+      if (nodes[j].id === conn.from) fromNode = nodes[j];
+      if (nodes[j].id === conn.to) toNode = nodes[j];
+    }
+    if (!fromNode || !toNode) continue;
+
+    var start = getPortCenter(conn.from, false, conn.fromType);
+    var end = getPortCenter(conn.to, true, conn.toType);
+
+    var dx = end.x - start.x;
+    var c1x = start.x + dx * 0.5;
+    var c1y = start.y;
+    var c2x = end.x - dx * 0.5;
+    var c2y = end.y;
+
+    var path = "M " + start.x + " " + start.y + " C " + c1x + " " + c1y + ", " + c2x + " " + c2y + ", " + end.x + " " + end.y;
+
+    var hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    hit.setAttribute("d", path);
+    hit.setAttribute("class", "connection-hit");
+    (function(idx) {
+      hit.addEventListener("click", function() { deleteConnection(idx); });
+      hit.addEventListener("contextmenu", function(e) { e.preventDefault(); deleteConnection(idx); });
+    })(i);
+    svg.appendChild(hit);
+
+    var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", path);
+    line.setAttribute("class", "connection " + (conn.valid ? "valid" : "invalid"));
+    svg.appendChild(line);
+  }
+}
+
+function drawTempConnection(e) {
+  if (!connectingFrom) return;
+  var svg = document.getElementById("graph-svg");
+  var start = getPortCenter(connectingFrom.node.id, false, connectingFrom.type);
+  var canvasRect = document.getElementById("canvas-wrap").getBoundingClientRect();
+  var end = { x: e.clientX - canvasRect.left, y: e.clientY - canvasRect.top };
+
+  var dx = end.x - start.x;
+  var path = "M " + start.x + " " + start.y + " C " + (start.x + dx*0.5) + " " + start.y + ", " + (end.x - dx*0.5) + " " + end.y + ", " + end.x + " " + end.y;
+
+  var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  line.setAttribute("d", path);
+  line.setAttribute("class", "connection active");
+  line.setAttribute("stroke", "#00ff41");
+  line.setAttribute("stroke-dasharray", "5 3");
+  svg.appendChild(line);
+}
+
+function deleteConnection(idx) {
+  connections.splice(idx, 1);
+  redrawConnections();
+  updateInspector();
+  updateFlowViz();
+  updateHelper();
+  updateChainCount();
+  log("Connection deleted.", "warn");
+}
+
+function validateAll() {
+  var validCount = 0, invalidCount = 0;
+  for (var i = 0; i < connections.length; i++) {
+    if (connections[i].valid) validCount++;
+    else invalidCount++;
+  }
+
+  if (invalidCount > 0) {
+    setChainStatus(invalidCount + " invalid connection(s). Type mismatch: OUTPUT(Ri) NOT IN TRIGGER(Ri+1).", "invalid");
+  } else if (validCount > 0) {
+    setChainStatus("All " + validCount + " connection(s) valid. OUTPUT(Ri) in TRIGGER(Ri+1) satisfied.", "valid");
+  } else {
+    setChainStatus("No connections to validate.", "neutral");
+  }
+  log("Validation: " + validCount + " valid, " + invalidCount + " invalid", invalidCount > 0 ? "error" : "success");
+  updateChainCount();
+}
+
+function updateChainCount() {
+  var count = 0;
+  var incoming = new Set();
+  for (var i = 0; i < connections.length; i++) incoming.add(connections[i].to);
+  for (var i = 0; i < nodes.length; i++) {
+    if (!incoming.has(nodes[i].id)) {
+      var hasPath = false;
+      for (var j = 0; j < connections.length; j++) {
+        if (connections[j].from === nodes[i].id) { hasPath = true; break; }
+      }
+      if (hasPath) count++;
+    }
+  }
+  document.getElementById("chain-count").textContent = count + " chain" + (count !== 1 ? "s" : "");
+}
+
+async function generatePayload() {
+  if (!pyodideReady) {
+    setChainStatus("WASM backend not ready.", "invalid");
+    return;
+  }
+
+  var nodesJson = JSON.stringify(nodes.map(function(n) {
+    return {id: n.id, typeId: n.typeId, name: n.def.name};
+  }));
+  var connsJson = JSON.stringify(connections);
+
+  try {
+    var chainsJson = pyodide.runPython("find_chains(" + JSON.stringify(nodesJson) + ", " + JSON.stringify(connsJson) + ")");
+    var chains = JSON.parse(chainsJson);
+
+    if (chains.length === 0) {
+      document.getElementById("payload-output").className = "payload-box empty";
+      document.getElementById("payload-output").textContent = "No complete chains found. Build a chain from start to end node.";
+      log("No chains found for payload generation.", "warn");
+      return;
+    }
+
+    var report = pyodide.runPython("format_chain_report(" + JSON.stringify(chainsJson) + ")");
+    document.getElementById("payload-output").className = "payload-box";
+    document.getElementById("payload-output").textContent = report;
+    log("Generated payloads for " + chains.length + " chain(s).", "success");
+
+    for (var i = 0; i < chains.length; i++) {
+      var types = chains[i].nodes.map(function(n) { return n.typeId; });
+      for (var j = 0; j < presets.length; j++) {
+        var preset = presets[j];
+        var match = true;
+        for (var k = 0; k < preset.nodes.length; k++) {
+          if (types[k] !== preset.nodes[k]) { match = false; break; }
+        }
+        if (match) {
+          showEncyclopediaEntry(preset.name);
+          break;
+        }
+      }
+    }
+
+  } catch(e) {
+    log("Payload generation error: " + e.message, "error");
+    setChainStatus("Payload generation failed.", "invalid");
+  }
+}
+
+function loadPreset(idx) {
+  clearCanvas();
+  var preset = presets[idx];
+  if (!preset) return;
+
+  var startX = 100, startY = 80 + idx * 120;
+  for (var i = 0; i < preset.nodes.length; i++) {
+    createNode(preset.nodes[i], startX + i * 150, startY);
+  }
+
+  for (var i = 0; i < preset.nodes.length - 1; i++) {
+    var fromNode = nodes[nodes.length - preset.nodes.length + i];
+    var toNode = nodes[nodes.length - preset.nodes.length + i + 1];
+    for (var j = 0; j < fromNode.def.outputs.length; j++) {
+      var outType = fromNode.def.outputs[j];
+      if (toNode.def.inputs.indexOf(outType) >= 0) {
+        connections.push({
+          from: fromNode.id,
+          to: toNode.id,
+          fromType: outType,
+          toType: outType,
+          valid: true
+        });
+        break;
+      }
+    }
+  }
+
+  redrawConnections();
+  validateAll();
+  showEncyclopediaEntry(preset.name);
+  log("Loaded preset: " + preset.name, "success");
+}
+
+function clearCanvas() {
+  nodes = [];
+  connections = [];
+  nextNodeId = 1;
+  selectedNodeId = null;
+  document.getElementById("nodes-container").innerHTML = "";
+  document.getElementById("graph-svg").innerHTML = "";
+  setChainStatus("Canvas cleared.", "neutral");
+  document.getElementById("payload-output").className = "payload-box empty";
+  document.getElementById("payload-output").textContent = "Build a valid chain and click GENERATE.";
+  updateInspector();
+  updateFlowViz();
+  updateHelper();
+  updateChainCount();
+  log("Canvas cleared.", "warn");
+}
+
+window.addEventListener("DOMContentLoaded", function() {
+  log("REFLEX_CHAIN_BUILDER v1.3 initializing...", "info");
+  initPyodide();
+});
+</script>
+
+</body>
+</html>
